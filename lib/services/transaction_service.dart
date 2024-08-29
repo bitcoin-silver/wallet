@@ -15,9 +15,10 @@ class TransactionService {
   final WalletService _walletService = WalletService();
 
   // Node-API-URLs
-  final String utxoApiUrl = 'https://dein-bitcoin-silver-node/api/getutxos';
+  final String utxoApiUrl =
+      'http://explorer.btcs.pools4mining.com:3001/api/getutxos';
   final String broadcastApiUrl =
-      'https://dein-bitcoin-silver-node/api/sendrawtransaction';
+      'http://explorer.btcs.pools4mining.com:3001/api/sendrawtransaction';
 
   // Transaktion erstellen und senden
   Future<String> createAndSendTransaction({
@@ -51,8 +52,10 @@ class TransactionService {
     );
 
     if (response.statusCode == 200) {
+      print(response.body);
       return List<Map<String, dynamic>>.from(jsonDecode(response.body));
     } else {
+      print(response.body);
       throw Exception('Fehler beim Abrufen der UTXOs: ${response.body}');
     }
   }
