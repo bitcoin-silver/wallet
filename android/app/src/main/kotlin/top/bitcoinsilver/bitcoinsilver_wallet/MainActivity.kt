@@ -1,4 +1,4 @@
-package com.example.bitcoinsilver_wallet
+package top.bitcoinsilver.wallet
 
 import io.flutter.embedding.android.FlutterActivity
 
