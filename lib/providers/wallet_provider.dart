@@ -100,30 +100,47 @@ class WalletProvider with ChangeNotifier {
       }
       _balance = totalBalance;
     }
-    print(_utxos);
     notifyListeners();
   }
 
   Future<Map<String, dynamic>> sendTransaction(
       String toAddress, double amount, double fee) async {
     await fetchUtxos();
+
     if (_privateKey == null || _address == null) {
       return {'success': false, 'message': 'Private key or address is missing'};
     }
 
-    final total = amount - fee;
-    double roundedTotal = (total * pow(10, 9)).ceil() / pow(10, 9);
+    double roundedAmount = (amount * pow(10, 8)).round() / pow(10, 8);
+    double roundedFee = (fee * pow(10, 8)).round() / pow(10, 8);
+    double totalAmount = roundedAmount + roundedFee;
 
-    // Erstellen der Transaktion
+    List<Map<String, dynamic>> selectedUtxos = [];
+    double accumulatedAmount = 0.0;
+
+    for (var utxo in _utxos) {
+      selectedUtxos.add({
+        'txid': utxo['txid'],
+        'vout': utxo['vout'],
+      });
+      accumulatedAmount += utxo['amount'];
+      if (accumulatedAmount >= totalAmount) break;
+    }
+
+    if (accumulatedAmount < totalAmount) {
+      return {'success': false, 'message': 'Not enough funds'};
+    }
+
+    double changeAmount = accumulatedAmount - totalAmount;
+    if (changeAmount < 0) {
+      return {'success': false, 'message': 'Calculated change is negative'};
+    }
+
     final createRawResult = await _rpcRequest('createrawtransaction', [
-      _utxos
-          .map((utxo) => {
-                'txid': utxo['txid'],
-                'vout': utxo['vout'],
-              })
-          .toList(),
+      selectedUtxos,
       [
-        {toAddress: roundedTotal}
+        {toAddress: roundedAmount},
+        {_address: changeAmount}
       ]
     ]);
 
@@ -133,7 +150,6 @@ class WalletProvider with ChangeNotifier {
 
     final rawTx = createRawResult['result'];
 
-    // Signieren der Transaktion
     final signRawResult = await _rpcRequest('signrawtransactionwithkey', [
       rawTx,
       [_privateKey]
@@ -144,16 +160,14 @@ class WalletProvider with ChangeNotifier {
     }
 
     final signedTx = signRawResult['result']['hex'];
-    // Überprüfen, ob die Transaktion vollständig signiert ist
     if (!signRawResult['result']['complete']) {
       return {'success': false, 'message': 'Transaction is not fully signed'};
     }
 
-    // Senden der Transaktion
     final sendRawResult = await _rpcRequest('sendrawtransaction', [signedTx]);
 
     if (sendRawResult == null || sendRawResult['result'] == null) {
-      return {'success': false, 'message': 'Error sending raw transaction'};
+      return {'success': false, 'message': 'Error sending transaction'};
     }
 
     return {'success': true, 'message': 'Transaction sent successfully'};
