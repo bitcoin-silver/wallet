@@ -27,7 +27,7 @@ class _ScannerViewState extends State<ScannerView> {
             key: qrKey,
             onQRViewCreated: _onScannerViewCreated,
             overlay: QrScannerOverlayShape(
-              borderColor: Colors.red,
+              borderColor: Colors.white,
               borderRadius: 10,
               borderLength: 30,
               borderWidth: 10,
@@ -63,9 +63,8 @@ class _ScannerViewState extends State<ScannerView> {
     this.controller = controller;
     controller.scannedDataStream.listen((scanData) {
       if (mounted) {
-        // Check if the widget is still mounted
-        controller.dispose(); // Stop scanning after first scan
-        Navigator.pop(context, scanData.code); // Return the scanned address
+        controller.dispose();
+        Navigator.pop(context, scanData.code);
       }
     });
   }

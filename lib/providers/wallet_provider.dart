@@ -1,7 +1,8 @@
+import 'dart:math';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 import 'package:bitcoinsilver_wallet/config.dart';
 import 'package:bitcoinsilver_wallet/services/wallet_service.dart';
@@ -29,20 +30,28 @@ class WalletProvider with ChangeNotifier {
   }
 
   Future<void> loadWallet() async {
-    _privateKey = await _storage.read(key: 'wifPrivateKey');
-    if (_privateKey == null) {
-      final result = _walletService.generateAddresses();
-      _privateKey = result['wifPrivateKey'];
-      _address = result['address'];
-      await _storage.write(key: 'wifPrivateKey', value: _privateKey);
-    } else {
-      _address = _walletService.recoverAddressFromWif(_privateKey!);
+    _privateKey = await _storage.read(key: 'key');
+    if (_privateKey != null) {
+      _address = _walletService.loadAddressFromKey(_privateKey!);
     }
-    await fetchUtxos();
     notifyListeners();
   }
 
-  Future<Map<String, dynamic>> _rpcRequest(String method,
+  Future<void> saveWallet(String address, String privateKey) async {
+    _privateKey = privateKey;
+    _address = address;
+    await _storage.write(key: 'key', value: privateKey);
+    notifyListeners();
+  }
+
+  Future<void> deleteWallet() async {
+    _privateKey = null;
+    _address = null;
+    await _storage.delete(key: 'key');
+    notifyListeners();
+  }
+
+  Future<Map<String, dynamic>?> _rpcRequest(String method,
       [List<dynamic>? params]) async {
     final auth = 'Basic ${base64Encode(utf8.encode('$rpcUser:$rpcPassword'))}';
     final headers = {'Content-Type': 'application/json', 'Authorization': auth};
@@ -54,21 +63,19 @@ class WalletProvider with ChangeNotifier {
       'params': params ?? [],
     });
 
-    try {
-      final response = await http.post(
-        Uri.parse(rpcUrl),
-        headers: headers,
-        body: body,
-      );
+    final response = await http.post(
+      Uri.parse(rpcUrl),
+      headers: headers,
+      body: body,
+    );
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception(
-            'RPC Call Error: ${response.statusCode} ${response.reasonPhrase}');
-      }
-    } catch (e) {
-      throw Exception('Exception: $e');
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      print('RPC Call Error: ${response.statusCode} ${response.reasonPhrase}');
+      print(
+          'Response body: ${response.body}'); // Dies gibt den genauen Fehler aus, den die Node zurückgibt.
+      return null;
     }
   }
 
@@ -84,7 +91,7 @@ class WalletProvider with ChangeNotifier {
       ]
     ]);
 
-    if (result['result'] != null) {
+    if (result != null && result['result'] != null) {
       final utxos = result['result']['unspents'] as List;
       _utxos = utxos;
       double totalBalance = 0.0;
@@ -93,30 +100,36 @@ class WalletProvider with ChangeNotifier {
       }
       _balance = totalBalance;
     }
+    print(_utxos);
     notifyListeners();
   }
 
-  Future<void> sendTransaction(String toAddress, double amount) async {
+  Future<Map<String, dynamic>> sendTransaction(
+      String toAddress, double amount, double fee) async {
     await fetchUtxos();
     if (_privateKey == null || _address == null) {
-      return;
+      return {'success': false, 'message': 'Private key or address is missing'};
     }
+
+    final total = amount - fee;
+    double roundedTotal = (total * pow(10, 9)).ceil() / pow(10, 9);
+
     // Erstellen der Transaktion
     final createRawResult = await _rpcRequest('createrawtransaction', [
       _utxos
           .map((utxo) => {
                 'txid': utxo['txid'],
                 'vout': utxo['vout'],
-                // Entferne scriptPubKey, da es nicht in den Eingaben erwartet wird
               })
           .toList(),
       [
-        {toAddress: amount},
-        // Hier wird das Senden der Gebühren für das Change-Address berücksichtigt, falls vorhanden
-        if (_balance! - amount - 0.00001 > 0)
-          {_address: _balance! - amount - 0.00001},
+        {toAddress: roundedTotal}
       ]
     ]);
+
+    if (createRawResult == null) {
+      return {'success': false, 'message': 'Error creating raw transaction'};
+    }
 
     final rawTx = createRawResult['result'];
 
@@ -126,15 +139,23 @@ class WalletProvider with ChangeNotifier {
       [_privateKey]
     ]);
 
-    final signedTx = signRawResult['result']['hex'];
+    if (signRawResult == null) {
+      return {'success': false, 'message': 'Error signing raw transaction'};
+    }
 
+    final signedTx = signRawResult['result']['hex'];
     // Überprüfen, ob die Transaktion vollständig signiert ist
     if (!signRawResult['result']['complete']) {
-      return;
+      return {'success': false, 'message': 'Transaction is not fully signed'};
     }
 
     // Senden der Transaktion
-    await _rpcRequest('sendrawtransaction', [signedTx]);
-    notifyListeners();
+    final sendRawResult = await _rpcRequest('sendrawtransaction', [signedTx]);
+
+    if (sendRawResult == null || sendRawResult['result'] == null) {
+      return {'success': false, 'message': 'Error sending raw transaction'};
+    }
+
+    return {'success': true, 'message': 'Transaction sent successfully'};
   }
 }

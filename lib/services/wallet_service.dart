@@ -1,68 +1,65 @@
-import 'dart:typed_data';
 import 'dart:math';
-import 'package:hex/hex.dart';
-import 'package:crypto/crypto.dart';
-import 'package:convert/convert.dart';
+import 'dart:typed_data';
 import 'package:pointycastle/digests/ripemd160.dart';
-import 'package:bech32/bech32.dart';
 import 'package:bip32/bip32.dart' as bip32;
-
-import 'package:bitcoinsilver_wallet/config.dart';
+import 'package:crypto/crypto.dart';
+import 'package:bech32/bech32.dart';
+import 'package:base_x/base_x.dart';
 
 class WalletService {
-  Map<String, String> generateAddresses() {
-    final randomSeed =
-        List<int>.generate(32, (i) => Random.secure().nextInt(256));
-    final root = bip32.BIP32.fromSeed(Uint8List.fromList(randomSeed));
-    final child = root.derivePath("m/0/0");
+  final BaseXCodec base58 =
+      BaseXCodec('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
-    final privateKey = child.privateKey!;
-    final pubKey = child.publicKey;
-    final pubKeyHash = _pubKeyToP2WPKH(pubKey);
+  String? generatePrivateKey() {
+    String? key;
+    String? address;
 
-    final bech32Addr = _encodeBech32Address(Config.prefix, 0, pubKeyHash);
-    final wifPrivateKey = _privateKeyToWif(privateKey);
-    return {
-      'address': bech32Addr,
-      'privateKey': HEX.encode(privateKey),
-      'wifPrivateKey': wifPrivateKey,
-    };
+    final seed = List<int>.generate(32, (i) => Random.secure().nextInt(256));
+    final root = bip32.BIP32.fromSeed(Uint8List.fromList(seed));
+    final child = root.derivePath('m/0/0');
+    key = _privateKeyToWif(child.privateKey!);
+    address = loadAddressFromKey(key);
+    print('$address, $key');
+    return key;
   }
 
-  String? recoverAddressFromWif(String wifPrivateKey) {
+  String? loadAddressFromKey(String wifPrivateKey) {
     try {
       final privateKey = _wifToPrivateKey(wifPrivateKey);
       final node = bip32.BIP32.fromPrivateKey(privateKey, Uint8List(32));
       final pubKey = node.publicKey;
       final pubKeyHash = _pubKeyToP2WPKH(pubKey);
 
-      return _encodeBech32Address(Config.prefix, 0, pubKeyHash);
-    } catch (e) {
+      return _encodeBech32Address('bs', 0, pubKeyHash);
+    } catch (e, stacktrace) {
+      print('Error recovering address from WIF: $e');
+      print(stacktrace);
       return null;
     }
   }
 
   String _privateKeyToWif(Uint8List privateKey) {
-    final prefix =
-        Uint8List.fromList([Config.prefixMainnet]); // Prefix for mainnet
+    final prefix = Uint8List.fromList([0x80]); // Prefix for mainnet
     final compressedKey =
         Uint8List.fromList(prefix + privateKey.toList() + [0x01]);
     final checksum = _calculateChecksum(compressedKey);
     final keyWithChecksum = Uint8List.fromList(compressedKey + checksum);
 
-    return _base58Encode(keyWithChecksum);
+    return base58.encode(keyWithChecksum);
   }
 
   Uint8List _wifToPrivateKey(String wif) {
-    final bytes = _base58Decode(wif);
+    final bytes = base58.decode(wif);
     final keyWithChecksum = bytes.sublist(0, bytes.length - 4);
     final checksum = bytes.sublist(bytes.length - 4);
 
-    if (!_listEquals(checksum, _calculateChecksum(keyWithChecksum))) {
+    final calculatedChecksum = _calculateChecksum(keyWithChecksum);
+    if (!_listEquals(checksum, calculatedChecksum)) {
+      print(
+          'Checksum mismatch: expected $checksum but got $calculatedChecksum');
       throw Exception('Invalid WIF checksum');
     }
 
-    // Remove prefix (0x80) and optional compression byte (0x01)
     return Uint8List.fromList(keyWithChecksum.sublist(
         1, keyWithChecksum.length - (keyWithChecksum.length > 32 ? 1 : 0)));
   }
@@ -71,52 +68,6 @@ class WalletService {
     final sha256_1 = sha256.convert(data).bytes;
     final sha256_2 = sha256.convert(Uint8List.fromList(sha256_1)).bytes;
     return Uint8List.fromList(sha256_2.sublist(0, 4));
-  }
-
-  String _base58Encode(Uint8List bytes) {
-    const alphabet =
-        '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-    BigInt x = BigInt.parse(hex.encode(bytes), radix: 16);
-    String result = '';
-
-    while (x > BigInt.zero) {
-      final mod = x % BigInt.from(58);
-      x = x ~/ BigInt.from(58);
-      result = alphabet[mod.toInt()] + result;
-    }
-
-    // Add leading '1's for each leading 0 byte in the original data
-    result = '1' * bytes.where((byte) => byte == 0).length + result;
-    return result;
-  }
-
-  Uint8List _base58Decode(String str) {
-    const alphabet =
-        '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-    BigInt x = BigInt.zero;
-
-    for (final char in str.runes) {
-      final index = alphabet.indexOf(String.fromCharCode(char));
-      if (index == -1) {
-        throw ArgumentError('Invalid character in Base58 string');
-      }
-      x = x * BigInt.from(58) + BigInt.from(index);
-    }
-
-    final bytes = <int>[];
-    while (x > BigInt.zero) {
-      final mod = x % BigInt.from(256);
-      bytes.insert(0, mod.toInt());
-      x = x ~/ BigInt.from(256);
-    }
-
-    // Add leading zeros for each leading '1' in the Base58 string
-    bytes.insertAll(
-        0,
-        List<int>.filled(
-            str.runes.where((char) => String.fromCharCode(char) == '1').length,
-            0));
-    return Uint8List.fromList(bytes);
   }
 
   Uint8List _pubKeyToP2WPKH(List<int> pubKey) {

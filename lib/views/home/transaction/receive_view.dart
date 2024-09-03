@@ -16,48 +16,48 @@ class ReceiveView extends StatelessWidget {
     void copyToClipboard(String text) {
       Clipboard.setData(ClipboardData(text: text));
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Adresse kopiert!')),
+        const SnackBar(content: Text('Address copied to clipboard!')),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor:
-            const Color(0xFF333333), // Gleiche Farbe wie der Hintergrund
-        elevation: 0, // Keine Schatten
+            const Color(0xFF333333), // Same color as the background
+        elevation: 0, // No shadow
         title: const Text(
           'Receive',
-          style: TextStyle(color: Colors.white, fontSize: 20), // Weißer Text
+          style: TextStyle(color: Colors.white, fontSize: 20), // White text
         ),
         leading: IconButton(
-          icon:
-              const Icon(Icons.arrow_back, color: Colors.white), // Weißes Icon
+          icon: const Icon(Icons.arrow_back, color: Colors.white), // White icon
           onPressed: () {
             Navigator.pop(context);
           },
         ),
-        centerTitle: true, // Text zentrieren
+        centerTitle: true, // Center the title
       ),
       body: Container(
-        color: const Color(0xFF333333), // Setze den Hintergrund der View
+        color: const Color(0xFF333333), // Set the background color of the view
         padding: const EdgeInsets.symmetric(
-            horizontal: 16.0), // Abstand zu den Bildschirmrändern
+            horizontal: 16.0), // Padding from screen edges
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (address != null && address.isNotEmpty)
               QrImageView(
-                data: address, // Adresse, die im QR-Code angezeigt wird
+                data: address, // Address displayed in the QR code
                 version: QrVersions.auto,
                 size: MediaQuery.of(context).size.width -
-                    32, // Breite des QR-Codes mit Abstand
-                backgroundColor: Colors.white, // Hintergrundfarbe des QR-Codes
+                    32, // Width of the QR code with padding
+                backgroundColor:
+                    Colors.white, // Background color of the QR code
               )
             else
               const Text('Address is not available',
                   style: TextStyle(color: Colors.red)),
-            const SizedBox(height: 20), // Abstands-Widget für besseren Layout
+            const SizedBox(height: 20), // Spacer for better layout
             if (address != null && address.isNotEmpty)
               Row(
                 children: [
@@ -74,9 +74,9 @@ class ReceiveView extends StatelessWidget {
                   ),
                 ],
               ),
-            const SizedBox(height: 20), // Abstands-Widget für besseren Layout
+            const SizedBox(height: 20), // Spacer for better layout
             const Text(
-              'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+              'To receive cryptocurrency, you can either scan the QR code or use the address displayed above. Simply share this address with the sender to complete the transaction. Make sure to double-check the address before confirming the transfer to ensure that the funds are sent to the correct location.',
               style: TextStyle(color: Colors.white),
             ),
           ],

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:bitcoinsilver_wallet/modals/transactions_modal.dart';
 import 'package:bitcoinsilver_wallet/views/home/wallet_view.dart';
+import 'package:bitcoinsilver_wallet/views/home/transactions_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/settings_view.dart';
 
 class HomeView extends StatefulWidget {
@@ -15,7 +15,7 @@ class _HomeViewState extends State<HomeView> {
 
   final List<Widget?> _pages = [
     const WalletView(),
-    null,
+    const TransactionsView(),
     const SettingsView(),
   ];
 
@@ -25,16 +25,9 @@ class _HomeViewState extends State<HomeView> {
         _selectedIndex = 0;
       });
     } else if (index == 1) {
-      showModalBottomSheet(
-        context: context,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25.0)),
-        ),
-        isScrollControlled: true,
-        builder: (BuildContext context) {
-          return const TransactionsModal();
-        },
-      );
+      setState(() {
+        _selectedIndex = 1;
+      });
     } else if (index == 2) {
       setState(() {
         _selectedIndex = 2;
@@ -57,7 +50,7 @@ class _HomeViewState extends State<HomeView> {
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.sync_alt),
-                label: '',
+                label: 'Transactions',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.settings),
@@ -81,33 +74,6 @@ class _HomeViewState extends State<HomeView> {
             unselectedLabelStyle: const TextStyle(
               fontSize: 14.0,
               fontWeight: FontWeight.normal,
-            ),
-          ),
-          Positioned(
-            top: -20,
-            left: MediaQuery.of(context).size.width / 2 - 35,
-            child: InkWell(
-              onTap: () => _onItemTapped(1),
-              child: Container(
-                width: 70,
-                height: 70,
-                decoration: const BoxDecoration(
-                  color: Colors.cyanAccent,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 10,
-                      offset: Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.sync_alt,
-                  color: Color(0xFF333333),
-                  size: 36,
-                ),
-              ),
             ),
           ),
         ],
