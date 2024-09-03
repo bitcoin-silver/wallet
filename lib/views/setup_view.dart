@@ -13,8 +13,8 @@ class SetupView extends StatelessWidget {
   void _processWallet(BuildContext context, String privateKey) {
     final address = _walletService.loadAddressFromKey(privateKey);
     if (address != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Address: $address'),
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Valid private key found!'),
         backgroundColor: Colors.green,
       ));
 
@@ -24,7 +24,7 @@ class SetupView extends StatelessWidget {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Invalid private key!'),
+        content: Text('Invalid private key found!'),
         backgroundColor: Colors.red,
       ));
     }
