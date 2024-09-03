@@ -135,7 +135,7 @@ class _TransactionsViewState extends State<TransactionsView> {
                     height: 100,
                     child: Center(
                       child: Text(
-                        'Keine Transaktionen vorhanden',
+                        'No transactions found',
                         style: TextStyle(color: Colors.white),
                       ),
                     ),
