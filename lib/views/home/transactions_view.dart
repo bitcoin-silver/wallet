@@ -94,9 +94,9 @@ class _TransactionsViewState extends State<TransactionsView> {
     final transactionProvider = Provider.of<TransactionProvider>(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF333333),
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF333333),
+        backgroundColor: Colors.black,
         automaticallyImplyLeading: false,
         actions: <Widget>[
           IconButton(
@@ -126,8 +126,8 @@ class _TransactionsViewState extends State<TransactionsView> {
         children: [
           Expanded(
             child: ListView(
+              padding: const EdgeInsets.all(16.0),
               controller: _scrollController,
-              padding: const EdgeInsets.all(8.0),
               children: [
                 if (transactionProvider.transactions.isEmpty &&
                     !transactionProvider.isLoading)
@@ -136,7 +136,7 @@ class _TransactionsViewState extends State<TransactionsView> {
                     child: Center(
                       child: Text(
                         'No transactions found',
-                        style: TextStyle(color: Colors.white),
+                        style: TextStyle(color: Colors.white54),
                       ),
                     ),
                   ),
@@ -148,13 +148,6 @@ class _TransactionsViewState extends State<TransactionsView> {
                   const SizedBox(
                     height: 100,
                     child: Center(child: CircularProgressIndicator()),
-                  ),
-                if (!transactionProvider.hasMore)
-                  const SizedBox(
-                    height: 100,
-                    child: Center(
-                      child: Text('---', style: TextStyle(color: Colors.white)),
-                    ),
                   ),
               ],
             ),

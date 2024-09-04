@@ -23,7 +23,8 @@ class TransactionTile extends StatelessWidget {
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(formattedDate, style: const TextStyle(color: Colors.white)),
+          Text(formattedDate,
+              style: const TextStyle(color: Colors.white54, fontSize: 12)),
           Text('$amount BTCS', style: TextStyle(color: color)),
         ],
       ),

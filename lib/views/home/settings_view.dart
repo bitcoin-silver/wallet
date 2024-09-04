@@ -10,15 +10,12 @@ class SettingsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final walletProvider = Provider.of<WalletProvider>(context);
-
-    final address = walletProvider.address;
     final privateKey = walletProvider.privateKey ?? '';
-    print('Address: $address, KEY: $privateKey');
 
     return Scaffold(
-      backgroundColor: const Color(0xFF333333),
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF333333),
+        backgroundColor: Colors.black,
         automaticallyImplyLeading: false,
         actions: const <Widget>[
           SizedBox(width: 16), // Abstand zwischen den Icons
@@ -35,7 +32,7 @@ class SettingsView extends StatelessWidget {
                 labelText: 'Private Key',
                 labelStyle: const TextStyle(color: Colors.white),
                 filled: true,
-                fillColor: const Color(0xFF333333),
+                fillColor: Colors.black,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.0),
                   borderSide: BorderSide.none,
@@ -69,7 +66,7 @@ class SettingsView extends StatelessWidget {
             const SizedBox(height: 20),
             const Text(
               'Your private key is a critical piece of information for accessing your cryptocurrency. Keep it secure and never share it with anyone. If someone gains access to your private key, they can control your assets. Make sure to store it in a safe place and back it up if necessary.',
-              style: TextStyle(color: Colors.white),
+              style: TextStyle(color: Colors.white54),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
@@ -83,7 +80,7 @@ class SettingsView extends StatelessWidget {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: const Color.fromARGB(255, 25, 25, 25),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12.0),
               ),

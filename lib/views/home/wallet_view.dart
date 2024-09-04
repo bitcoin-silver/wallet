@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
-import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/views/home/transaction/receive_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/transaction/send_view.dart';
+import 'package:bitcoinsilver_wallet/widgets/balance_widget.dart';
 
 class WalletView extends StatefulWidget {
   const WalletView({super.key});
@@ -13,25 +11,28 @@ class WalletView extends StatefulWidget {
 }
 
 class _WalletViewState extends State<WalletView> {
+  final GlobalKey<BalanceWidgetState> _balanceKey =
+      GlobalKey<BalanceWidgetState>();
+
   @override
   void initState() {
     super.initState();
-    _onRefresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onRefresh();
+    });
   }
 
   Future<void> _onRefresh() async {
-    final walletProvider = Provider.of<WalletProvider>(context, listen: false);
-    walletProvider.fetchUtxos();
+    _balanceKey.currentState?.updateBalance();
   }
 
   @override
   Widget build(BuildContext context) {
-    final walletProvider = Provider.of<WalletProvider>(context);
-
     return Scaffold(
-      backgroundColor: const Color(0xFF333333),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF333333),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         automaticallyImplyLeading: false,
         actions: <Widget>[
           IconButton(
@@ -54,33 +55,27 @@ class _WalletViewState extends State<WalletView> {
               _onRefresh();
             },
           ),
-          const SizedBox(width: 16), // Abstand zwischen den Icons
+          const SizedBox(width: 16),
         ],
       ),
-      body: Center(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color.fromARGB(255, 0, 75, 75), Colors.black],
+            stops: [0, 0.75],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: walletProvider.balance != null
-              ? Text(
-                  'Balance: ${walletProvider.balance}',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: MediaQuery.of(context).size.width *
-                        0.08, // Textgröße proportional zur Bildschirmbreite
-                    fontWeight: FontWeight
-                        .bold, // Optional: Fettdruck für bessere Sichtbarkeit
-                  ),
-                  textAlign: TextAlign.center,
-                )
-              : const Text(
-                  'Loading balance...',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+          padding: const EdgeInsets.only(top: kToolbarHeight),
+          child: Center(
+            child: Column(
+              children: [
+                BalanceWidget(key: _balanceKey),
+              ],
+            ),
+          ),
         ),
       ),
     );

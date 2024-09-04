@@ -56,7 +56,7 @@ class _TransactionModalState extends State<TransactionModal> {
           topRight: Radius.circular(16.0),
         ),
         child: Container(
-          color: const Color(0xFF333333),
+          color: Colors.black,
           padding: const EdgeInsets.all(16.0),
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
@@ -75,9 +75,8 @@ class _TransactionModalState extends State<TransactionModal> {
                               const Text(
                                 'Transaction Details',
                                 style: TextStyle(
-                                  fontSize: 18,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                                  color: Colors.white54,
                                 ),
                               ),
                               const SizedBox(height: 16),

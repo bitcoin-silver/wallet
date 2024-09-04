@@ -49,7 +49,7 @@ class _HomeViewState extends State<HomeView> {
                 label: 'Wallet',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.sync_alt),
+                icon: Icon(Icons.repeat),
                 label: 'Transactions',
               ),
               BottomNavigationBarItem(
@@ -66,11 +66,8 @@ class _HomeViewState extends State<HomeView> {
             },
             selectedItemColor: Colors.cyanAccent,
             unselectedItemColor: Colors.white,
-            backgroundColor: const Color(0xFF333333),
-            selectedLabelStyle: const TextStyle(
-              fontSize: 14.0,
-              fontWeight: FontWeight.normal,
-            ),
+            backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+            selectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
             unselectedLabelStyle: const TextStyle(
               fontSize: 14.0,
               fontWeight: FontWeight.normal,

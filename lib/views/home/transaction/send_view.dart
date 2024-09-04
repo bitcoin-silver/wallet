@@ -109,12 +109,9 @@ class _SendViewState extends State<SendView> {
 
   @override
   Widget build(BuildContext context) {
-    const appBarColor = Color(0xFF333333); // Same color as the AppBar
-
     return Scaffold(
       appBar: AppBar(
-        backgroundColor:
-            const Color(0xFF333333), // Same color as the background
+        backgroundColor: Colors.black, // Same color as the background
         elevation: 0, // No shadow
         title: const Text(
           'Send',
@@ -129,11 +126,12 @@ class _SendViewState extends State<SendView> {
         centerTitle: true, // Center the title
       ),
       body: Container(
-        color: appBarColor, // Background color of the container
+        color: Colors.black,
+        padding:
+            const EdgeInsets.all(16.0), // Background color of the container
         constraints:
             const BoxConstraints.expand(), // Expand container to full height
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -143,7 +141,7 @@ class _SendViewState extends State<SendView> {
                   labelText: 'Recipient Address',
                   labelStyle: const TextStyle(color: Colors.white),
                   filled: true,
-                  fillColor: appBarColor,
+                  fillColor: Colors.black,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
                     borderSide: BorderSide.none,
@@ -191,7 +189,7 @@ class _SendViewState extends State<SendView> {
                         labelText: 'Amount',
                         labelStyle: const TextStyle(color: Colors.white),
                         filled: true,
-                        fillColor: appBarColor,
+                        fillColor: Colors.black,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8.0),
                           borderSide: BorderSide.none,
@@ -214,11 +212,13 @@ class _SendViewState extends State<SendView> {
                   ElevatedButton(
                     onPressed: _setMaxAmount,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white, // Button background color
+                      backgroundColor: const Color.fromARGB(
+                          255, 25, 25, 25), // Button background color
                     ),
                     child: const Text(
                       'Max',
-                      style: TextStyle(color: appBarColor), // Button text color
+                      style:
+                          TextStyle(color: Colors.white), // Button text color
                     ),
                   ),
                 ],
@@ -236,7 +236,7 @@ class _SendViewState extends State<SendView> {
                         labelText: 'Fee',
                         labelStyle: const TextStyle(color: Colors.white),
                         filled: true,
-                        fillColor: appBarColor,
+                        fillColor: Colors.black,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8.0),
                           borderSide: BorderSide.none,
@@ -259,11 +259,13 @@ class _SendViewState extends State<SendView> {
                   ElevatedButton(
                     onPressed: _setFee,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white, // Button background color
+                      backgroundColor: const Color.fromARGB(
+                          255, 25, 25, 25), // Button background color
                     ),
                     child: const Text(
                       'Recommended',
-                      style: TextStyle(color: appBarColor), // Button text color
+                      style:
+                          TextStyle(color: Colors.white), // Button text color
                     ),
                   ),
                 ],
@@ -272,13 +274,13 @@ class _SendViewState extends State<SendView> {
               if (_errorMessage.isNotEmpty)
                 Text(
                   _errorMessage,
-                  style: const TextStyle(color: Colors.red, fontSize: 16),
+                  style: const TextStyle(color: Colors.red),
                   textAlign: TextAlign.center,
                 ),
               const SizedBox(height: 20),
               const Text(
                 'To send cryptocurrency, enter the recipient’s address and the amount you wish to transfer. Ensure you have enough balance to cover the transaction. After entering the details, confirm by checking the box below and press "Send".',
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: Colors.white54),
               ),
               const SizedBox(height: 20),
               Row(
@@ -291,7 +293,7 @@ class _SendViewState extends State<SendView> {
                         _isChecked = value ?? false;
                       });
                     },
-                    checkColor: appBarColor, // Color of the checkmark
+                    checkColor: Colors.black, // Color of the checkmark
                     activeColor:
                         Colors.white, // Background color of the checkbox
                   ),
@@ -307,11 +309,12 @@ class _SendViewState extends State<SendView> {
               ElevatedButton(
                 onPressed: _send,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white, // Button background color
+                  backgroundColor: const Color.fromARGB(
+                      255, 25, 25, 25), // Button background color
                 ),
                 child: const Text(
                   'Send',
-                  style: TextStyle(color: appBarColor), // Button text color
+                  style: TextStyle(color: Colors.white), // Button text color
                 ),
               ),
             ],

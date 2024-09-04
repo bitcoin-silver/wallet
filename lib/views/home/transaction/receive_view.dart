@@ -22,8 +22,7 @@ class ReceiveView extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor:
-            const Color(0xFF333333), // Same color as the background
+        backgroundColor: Colors.black, // Same color as the background
         elevation: 0, // No shadow
         title: const Text(
           'Receive',
@@ -38,9 +37,8 @@ class ReceiveView extends StatelessWidget {
         centerTitle: true, // Center the title
       ),
       body: Container(
-        color: const Color(0xFF333333), // Set the background color of the view
-        padding: const EdgeInsets.symmetric(
-            horizontal: 16.0), // Padding from screen edges
+        color: Colors.black, // Set the background color of the view
+        padding: const EdgeInsets.all(16.0), // Padding from screen edges
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -77,7 +75,7 @@ class ReceiveView extends StatelessWidget {
             const SizedBox(height: 20), // Spacer for better layout
             const Text(
               'To receive cryptocurrency, you can either scan the QR code or use the address displayed above. Simply share this address with the sender to complete the transaction. Make sure to double-check the address before confirming the transfer to ensure that the funds are sent to the correct location.',
-              style: TextStyle(color: Colors.white),
+              style: TextStyle(color: Colors.white54),
             ),
           ],
         ),

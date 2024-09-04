@@ -19,7 +19,6 @@ class TransactionProvider with ChangeNotifier {
   Future<void> fetchTransactions(String address) async {
     if (_isLoading) return;
     _isLoading = true;
-    notifyListeners();
 
     final url =
         '${Config.baseUrl}${Config.getAddressTxsEndpoint}/$address/$_startIndex/$_limit';

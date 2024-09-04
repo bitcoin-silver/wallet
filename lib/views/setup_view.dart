@@ -76,16 +76,13 @@ class SetupView extends StatelessWidget {
                     'Recover Your Wallet',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 20,
+                      fontSize: 16,
                     ),
                   ),
                   const SizedBox(height: 10),
                   const Text(
                     'Enter your private key to recover your wallet. Ensure that the key is correct to access your previous assets and data securely.',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.white54),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
@@ -111,8 +108,8 @@ class SetupView extends StatelessWidget {
                   ElevatedButton(
                     onPressed: () => _recoverWallet(context),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
+                      backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                           vertical: 12.0, horizontal: 24.0),
                     ),
@@ -126,24 +123,21 @@ class SetupView extends StatelessWidget {
                     'Generate a New Wallet',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 20,
+                      fontSize: 16,
                     ),
                   ),
                   const SizedBox(height: 10),
                   const Text(
                     'Create a new wallet to securely store your assets. A new private key will be generated which you should keep safe and secure.',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.white54),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
                   ElevatedButton(
                     onPressed: () => _generateWallet(context),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
+                      backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                           vertical: 12.0, horizontal: 24.0),
                     ),
@@ -153,10 +147,7 @@ class SetupView extends StatelessWidget {
                   const SizedBox(height: 20),
                   const Text(
                     'Note: Always keep your private key secure. Losing it means losing access to your wallet and assets.',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.white54),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
