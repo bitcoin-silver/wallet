@@ -139,7 +139,7 @@ class WalletProvider with ChangeNotifier {
     final createRawResult = await _rpcRequest('createrawtransaction', [
       selectedUtxos,
       [
-        {toAddress: roundedAmount},
+        {toAddress: totalAmount},
         {_address: changeAmount}
       ]
     ]);
