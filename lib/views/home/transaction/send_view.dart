@@ -25,8 +25,9 @@ class _SendViewState extends State<SendView> {
     _fetchBalance();
   }
 
-  void _fetchBalance() {
+  Future<void> _fetchBalance() async {
     final walletProvider = Provider.of<WalletProvider>(context, listen: false);
+    await walletProvider.fetchUtxos();
     setState(() {
       _balance =
           walletProvider.balance ?? 0.0; // Balance aus dem WalletProvider holen
