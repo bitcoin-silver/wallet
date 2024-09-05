@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/transaction_provider.dart';
 import 'package:bitcoinsilver_wallet/views/setup_view.dart';
@@ -28,12 +27,12 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final walletProvider = Provider.of<WalletProvider>(context);
-    final initialRoute = walletProvider.privateKey != null ? '/home' : '/';
+    final initialRoute = walletProvider.privateKey != null ? '/home' : '/setup';
 
     return MaterialApp(
       initialRoute: initialRoute,
       routes: {
-        '/': (context) => SetupView(),
+        '/setup': (context) => SetupView(),
         '/home': (context) => const HomeView(),
       },
     );

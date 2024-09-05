@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-
 import 'package:bitcoinsilver_wallet/config.dart';
 import 'package:bitcoinsilver_wallet/models/transaction.dart';
 

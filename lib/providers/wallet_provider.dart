@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-
 import 'package:bitcoinsilver_wallet/config.dart';
 import 'package:bitcoinsilver_wallet/services/wallet_service.dart';
 
@@ -73,8 +72,7 @@ class WalletProvider with ChangeNotifier {
       return jsonDecode(response.body);
     } else {
       print('RPC Call Error: ${response.statusCode} ${response.reasonPhrase}');
-      print(
-          'Response body: ${response.body}'); // Dies gibt den genauen Fehler aus, den die Node zurückgibt.
+      print('Response body: ${response.body}');
       return null;
     }
   }

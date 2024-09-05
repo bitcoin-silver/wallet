@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import 'package:bitcoinsilver_wallet/providers/transaction_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/views/home/transaction/receive_view.dart';
@@ -34,7 +33,6 @@ class _TransactionsViewState extends State<TransactionsView> {
       if (address != null) {
         transactionProvider.fetchTransactions(address);
       } else {
-        // Handle case where address is null, if necessary
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('No wallet address found.'),
@@ -72,7 +70,6 @@ class _TransactionsViewState extends State<TransactionsView> {
       transactionProvider.clearTransactions();
       await transactionProvider.fetchTransactions(address);
     } else {
-      // Handle case where address is null, if necessary
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No wallet address found.'),
@@ -94,9 +91,10 @@ class _TransactionsViewState extends State<TransactionsView> {
     final transactionProvider = Provider.of<TransactionProvider>(context);
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         automaticallyImplyLeading: false,
         actions: <Widget>[
           IconButton(
@@ -113,46 +111,59 @@ class _TransactionsViewState extends State<TransactionsView> {
                   MaterialPageRoute(builder: (context) => const SendView()));
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.sync, color: Colors.white),
-            onPressed: () {
-              _onRefresh();
-            },
-          ),
-          const SizedBox(width: 16), // Abstand zwischen den Icons
+          const SizedBox(width: 16),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16.0),
-              controller: _scrollController,
-              children: [
-                if (transactionProvider.transactions.isEmpty &&
-                    !transactionProvider.isLoading)
-                  const SizedBox(
-                    height: 100,
-                    child: Center(
-                      child: Text(
-                        'No transactions found',
-                        style: TextStyle(color: Colors.white54),
+      body: RefreshIndicator(
+        backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+        color: Colors.cyanAccent,
+        onRefresh: _onRefresh,
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height -
+                  kBottomNavigationBarHeight,
+            ),
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.black, Colors.black],
+                  stops: [0, 0.75],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.only(top: kToolbarHeight),
+                child: Column(
+                  children: [
+                    if (transactionProvider.transactions.isEmpty &&
+                        !transactionProvider.isLoading)
+                      const SizedBox(
+                        height: 100,
+                        child: Center(
+                          child: Text(
+                            'No transactions found',
+                            style: TextStyle(color: Colors.white54),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                ...transactionProvider.transactions.map((tx) => TransactionTile(
-                      tx: tx,
-                      onTap: () => _showTransactionDetails(tx.txid),
-                    )),
-                if (transactionProvider.isLoading)
-                  const SizedBox(
-                    height: 100,
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-              ],
+                    ...transactionProvider.transactions
+                        .map((tx) => TransactionTile(
+                              tx: tx,
+                              onTap: () => _showTransactionDetails(tx.txid),
+                            )),
+                    if (transactionProvider.isLoading)
+                      const SizedBox(
+                        height: 100,
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }

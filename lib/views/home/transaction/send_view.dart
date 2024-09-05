@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
-import 'package:bitcoinsilver_wallet/views/home/transaction/scanner_view.dart'; // Importiere die ScannerView
+import 'package:bitcoinsilver_wallet/views/home/transaction/scanner_view.dart';
+import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 
 class SendView extends StatefulWidget {
   const SendView({super.key});
@@ -29,8 +30,7 @@ class _SendViewState extends State<SendView> {
     final walletProvider = Provider.of<WalletProvider>(context, listen: false);
     await walletProvider.fetchUtxos();
     setState(() {
-      _balance =
-          walletProvider.balance ?? 0.0; // Balance aus dem WalletProvider holen
+      _balance = walletProvider.balance ?? 0.0;
     });
   }
 
@@ -69,7 +69,6 @@ class _SendViewState extends State<SendView> {
       if (_addressController.text.trim().isNotEmpty) {
         if (walletProvider.balance != null &&
             walletProvider.balance! >= amount) {
-          // Add fee to the amount check
           if (walletProvider.utxos != null &&
               walletProvider.utxos!.isNotEmpty) {
             final result = await walletProvider.sendTransaction(
@@ -112,26 +111,24 @@ class _SendViewState extends State<SendView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.black, // Same color as the background
-        elevation: 0, // No shadow
+        backgroundColor: Colors.black,
+        elevation: 0,
         title: const Text(
           'Send',
-          style: TextStyle(color: Colors.white, fontSize: 20), // White text
+          style: TextStyle(color: Colors.white, fontSize: 20),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white), // White icon
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
             Navigator.pop(context);
           },
         ),
-        centerTitle: true, // Center the title
+        centerTitle: true,
       ),
       body: Container(
         color: Colors.black,
-        padding:
-            const EdgeInsets.all(16.0), // Background color of the container
-        constraints:
-            const BoxConstraints.expand(), // Expand container to full height
+        padding: const EdgeInsets.all(16.0),
+        constraints: const BoxConstraints.expand(),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -210,17 +207,10 @@ class _SendViewState extends State<SendView> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  ElevatedButton(
+                  ButtonWidget(
+                    text: 'Max',
+                    isPrimary: true,
                     onPressed: _setMaxAmount,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color.fromARGB(
-                          255, 25, 25, 25), // Button background color
-                    ),
-                    child: const Text(
-                      'Max',
-                      style:
-                          TextStyle(color: Colors.white), // Button text color
-                    ),
                   ),
                 ],
               ),
@@ -257,17 +247,10 @@ class _SendViewState extends State<SendView> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  ElevatedButton(
+                  ButtonWidget(
+                    text: 'Auto',
+                    isPrimary: true,
                     onPressed: _setFee,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color.fromARGB(
-                          255, 25, 25, 25), // Button background color
-                    ),
-                    child: const Text(
-                      'Recommended',
-                      style:
-                          TextStyle(color: Colors.white), // Button text color
-                    ),
                   ),
                 ],
               ),
@@ -294,9 +277,8 @@ class _SendViewState extends State<SendView> {
                         _isChecked = value ?? false;
                       });
                     },
-                    checkColor: Colors.black, // Color of the checkmark
-                    activeColor:
-                        Colors.white, // Background color of the checkbox
+                    checkColor: Colors.black,
+                    activeColor: Colors.white,
                   ),
                   const Expanded(
                     child: Text(
@@ -307,16 +289,10 @@ class _SendViewState extends State<SendView> {
                 ],
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
+              ButtonWidget(
+                text: 'Send',
+                isPrimary: true,
                 onPressed: _send,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color.fromARGB(
-                      255, 25, 25, 25), // Button background color
-                ),
-                child: const Text(
-                  'Send',
-                  style: TextStyle(color: Colors.white), // Button text color
-                ),
               ),
             ],
           ),

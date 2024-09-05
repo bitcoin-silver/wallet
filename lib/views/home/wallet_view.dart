@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:bitcoinsilver_wallet/views/home/transaction/receive_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/transaction/send_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/balance_widget.dart';
+import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 
 class WalletView extends StatefulWidget {
   const WalletView({super.key});
@@ -34,46 +35,69 @@ class _WalletViewState extends State<WalletView> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: false,
-        actions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.arrow_downward, color: Colors.white),
-            onPressed: () {
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (context) => const ReceiveView()));
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.arrow_upward, color: Colors.white),
-            onPressed: () {
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (context) => const SendView()));
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.sync, color: Colors.white),
-            onPressed: () {
-              _onRefresh();
-            },
-          ),
-          const SizedBox(width: 16),
+        actions: const <Widget>[
+          SizedBox(width: 16),
         ],
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color.fromARGB(255, 0, 75, 75), Colors.black],
-            stops: [0, 0.75],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.only(top: kToolbarHeight),
-          child: Center(
-            child: Column(
-              children: [
-                BalanceWidget(key: _balanceKey),
-              ],
+      body: RefreshIndicator(
+        backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+        color: Colors.cyanAccent,
+        onRefresh: _onRefresh,
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height -
+                  kBottomNavigationBarHeight,
+            ),
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color.fromARGB(255, 0, 75, 75), Colors.black],
+                  stops: [0, 0.75],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.only(top: kToolbarHeight),
+                child: Column(
+                  children: [
+                    BalanceWidget(key: _balanceKey),
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ButtonWidget(
+                            text: 'Send',
+                            isPrimary: true,
+                            icon: Icons.arrow_upward,
+                            onPressed: () {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) => const SendView()));
+                            },
+                          ),
+                          const SizedBox(width: 10),
+                          ButtonWidget(
+                            text: 'Receive',
+                            isPrimary: true,
+                            icon: Icons.arrow_downward,
+                            onPressed: () {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          const ReceiveView()));
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

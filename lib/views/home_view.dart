@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:bitcoinsilver_wallet/views/home/wallet_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/transactions_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/settings_view.dart';
@@ -42,6 +41,12 @@ class _HomeViewState extends State<HomeView> {
       bottomNavigationBar: Stack(
         clipBehavior: Clip.none,
         children: [
+          Positioned(
+            top: -1,
+            left: 0,
+            right: 0,
+            child: Container(height: 1, color: Colors.white),
+          ),
           BottomNavigationBar(
             items: const <BottomNavigationBarItem>[
               BottomNavigationBarItem(
@@ -66,7 +71,7 @@ class _HomeViewState extends State<HomeView> {
             },
             selectedItemColor: Colors.cyanAccent,
             unselectedItemColor: Colors.white,
-            backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+            backgroundColor: Colors.black,
             selectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
             unselectedLabelStyle: const TextStyle(
               fontSize: 14.0,

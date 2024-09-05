@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-
 import 'package:bitcoinsilver_wallet/models/transaction.dart';
 
 class TransactionTile extends StatelessWidget {
