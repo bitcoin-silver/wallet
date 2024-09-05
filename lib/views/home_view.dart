@@ -45,7 +45,7 @@ class _HomeViewState extends State<HomeView> {
             top: -1,
             left: 0,
             right: 0,
-            child: Container(height: 1, color: Colors.white),
+            child: Container(height: 1, color: Colors.white54),
           ),
           BottomNavigationBar(
             items: const <BottomNavigationBarItem>[

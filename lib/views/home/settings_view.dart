@@ -13,15 +13,6 @@ class SettingsView extends StatelessWidget {
     final privateKey = walletProvider.privateKey ?? '';
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        actions: const <Widget>[
-          SizedBox(width: 16),
-        ],
-      ),
       body: SingleChildScrollView(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -38,8 +29,7 @@ class SettingsView extends StatelessWidget {
               ),
             ),
             child: Padding(
-              padding: const EdgeInsets.only(
-                  top: kToolbarHeight, left: 16.0, right: 16.0),
+              padding: const EdgeInsets.only(top: 75, left: 16.0, right: 16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

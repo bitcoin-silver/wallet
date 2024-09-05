@@ -30,15 +30,6 @@ class _WalletViewState extends State<WalletView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        actions: const <Widget>[
-          SizedBox(width: 16),
-        ],
-      ),
       body: RefreshIndicator(
         backgroundColor: const Color.fromARGB(255, 25, 25, 25),
         color: Colors.cyanAccent,
@@ -59,7 +50,7 @@ class _WalletViewState extends State<WalletView> {
                 ),
               ),
               child: Padding(
-                padding: const EdgeInsets.only(top: kToolbarHeight),
+                padding: const EdgeInsets.only(top: 50),
                 child: Column(
                   children: [
                     BalanceWidget(key: _balanceKey),

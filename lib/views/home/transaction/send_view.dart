@@ -127,174 +127,176 @@ class _SendViewState extends State<SendView> {
       ),
       body: Container(
         color: Colors.black,
-        padding: const EdgeInsets.all(16.0),
         constraints: const BoxConstraints.expand(),
         child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextField(
-                controller: _addressController,
-                decoration: InputDecoration(
-                  labelText: 'Recipient Address',
-                  labelStyle: const TextStyle(color: Colors.white),
-                  filled: true,
-                  fillColor: Colors.black,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide.none,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 32.0, left: 16.0, right: 16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _addressController,
+                  decoration: InputDecoration(
+                    labelText: 'Recipient Address',
+                    labelStyle: const TextStyle(color: Colors.white),
+                    filled: true,
+                    fillColor: Colors.black,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                      borderSide:
+                          const BorderSide(color: Colors.white, width: 1.0),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                      borderSide:
+                          const BorderSide(color: Colors.white, width: 1.0),
+                    ),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.qr_code_scanner,
+                          color: Colors.white),
+                      onPressed: () async {
+                        final scannedAddress = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ScannerView(),
+                          ),
+                        );
+                        if (scannedAddress != null) {
+                          setState(() {
+                            _addressController.text = scannedAddress;
+                          });
+                        }
+                      },
+                    ),
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                    borderSide:
-                        const BorderSide(color: Colors.white, width: 1.0),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                    borderSide:
-                        const BorderSide(color: Colors.white, width: 1.0),
-                  ),
-                  suffixIcon: IconButton(
-                    icon:
-                        const Icon(Icons.qr_code_scanner, color: Colors.white),
-                    onPressed: () async {
-                      final scannedAddress = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const ScannerView(),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _amountController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: InputDecoration(
+                          labelText: 'Amount',
+                          labelStyle: const TextStyle(color: Colors.white),
+                          filled: true,
+                          fillColor: Colors.black,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                            borderSide: const BorderSide(
+                                color: Colors.white, width: 1.0),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                            borderSide: const BorderSide(
+                                color: Colors.white, width: 1.0),
+                          ),
                         ),
-                      );
-                      if (scannedAddress != null) {
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    ButtonWidget(
+                      text: 'Max',
+                      isPrimary: true,
+                      onPressed: _setMaxAmount,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _feeController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: InputDecoration(
+                          labelText: 'Fee',
+                          labelStyle: const TextStyle(color: Colors.white),
+                          filled: true,
+                          fillColor: Colors.black,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                            borderSide: const BorderSide(
+                                color: Colors.white, width: 1.0),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                            borderSide: const BorderSide(
+                                color: Colors.white, width: 1.0),
+                          ),
+                        ),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    ButtonWidget(
+                      text: 'Auto',
+                      isPrimary: true,
+                      onPressed: _setFee,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                if (_errorMessage.isNotEmpty)
+                  Text(
+                    _errorMessage,
+                    style: const TextStyle(color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                const SizedBox(height: 20),
+                const Text(
+                  'To send cryptocurrency, enter the recipient’s address and the amount you wish to transfer. Ensure you have enough balance to cover the transaction. After entering the details, confirm by checking the box below and press "Send".',
+                  style: TextStyle(color: Colors.white54),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Checkbox(
+                      value: _isChecked,
+                      onChanged: (bool? value) {
                         setState(() {
-                          _addressController.text = scannedAddress;
+                          _isChecked = value ?? false;
                         });
-                      }
-                    },
-                  ),
-                ),
-                style: const TextStyle(color: Colors.white),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _amountController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        labelText: 'Amount',
-                        labelStyle: const TextStyle(color: Colors.white),
-                        filled: true,
-                        fillColor: Colors.black,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8.0),
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8.0),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 1.0),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8.0),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 1.0),
-                        ),
+                      },
+                      checkColor: Colors.black,
+                      activeColor: Colors.white,
+                    ),
+                    const Expanded(
+                      child: Text(
+                        'I confirm that the details are correct',
+                        style: TextStyle(color: Colors.white),
                       ),
-                      style: const TextStyle(color: Colors.white),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  ButtonWidget(
-                    text: 'Max',
-                    isPrimary: true,
-                    onPressed: _setMaxAmount,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _feeController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        labelText: 'Fee',
-                        labelStyle: const TextStyle(color: Colors.white),
-                        filled: true,
-                        fillColor: Colors.black,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8.0),
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8.0),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 1.0),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8.0),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 1.0),
-                        ),
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ButtonWidget(
-                    text: 'Auto',
-                    isPrimary: true,
-                    onPressed: _setFee,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              if (_errorMessage.isNotEmpty)
-                Text(
-                  _errorMessage,
-                  style: const TextStyle(color: Colors.red),
-                  textAlign: TextAlign.center,
+                  ],
                 ),
-              const SizedBox(height: 20),
-              const Text(
-                'To send cryptocurrency, enter the recipient’s address and the amount you wish to transfer. Ensure you have enough balance to cover the transaction. After entering the details, confirm by checking the box below and press "Send".',
-                style: TextStyle(color: Colors.white54),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Checkbox(
-                    value: _isChecked,
-                    onChanged: (bool? value) {
-                      setState(() {
-                        _isChecked = value ?? false;
-                      });
-                    },
-                    checkColor: Colors.black,
-                    activeColor: Colors.white,
-                  ),
-                  const Expanded(
-                    child: Text(
-                      'I confirm that the details are correct',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              ButtonWidget(
-                text: 'Send',
-                isPrimary: true,
-                onPressed: _send,
-              ),
-            ],
+                const SizedBox(height: 20),
+                ButtonWidget(
+                  text: 'Send',
+                  isPrimary: true,
+                  onPressed: _send,
+                ),
+              ],
+            ),
           ),
         ),
       ),
