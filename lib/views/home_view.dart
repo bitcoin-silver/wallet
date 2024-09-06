@@ -41,12 +41,6 @@ class _HomeViewState extends State<HomeView> {
       bottomNavigationBar: Stack(
         clipBehavior: Clip.none,
         children: [
-          Positioned(
-            top: -1,
-            left: 0,
-            right: 0,
-            child: Container(height: 1, color: Colors.white54),
-          ),
           BottomNavigationBar(
             items: const <BottomNavigationBarItem>[
               BottomNavigationBarItem(

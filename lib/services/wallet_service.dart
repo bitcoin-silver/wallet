@@ -1,10 +1,13 @@
+import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
+import 'package:http/http.dart' as http;
 import 'package:pointycastle/digests/ripemd160.dart';
 import 'package:bip32/bip32.dart' as bip32;
 import 'package:crypto/crypto.dart';
 import 'package:bech32/bech32.dart';
 import 'package:base_x/base_x.dart';
+import 'package:bitcoinsilver_wallet/config.dart';
 
 class WalletService {
   final BaseXCodec base58 =
@@ -30,7 +33,7 @@ class WalletService {
       final pubKey = node.publicKey;
       final pubKeyHash = _pubKeyToP2WPKH(pubKey);
 
-      return _encodeBech32Address('bs', 0, pubKeyHash);
+      return _encodeBech32Address(Config.addressPrefix, 0, pubKeyHash);
     } catch (e, stacktrace) {
       print('Error recovering address from WIF: $e');
       print(stacktrace);
@@ -39,7 +42,7 @@ class WalletService {
   }
 
   String _privateKeyToWif(Uint8List privateKey) {
-    final prefix = Uint8List.fromList([0x80]); // Prefix for mainnet
+    final prefix = Uint8List.fromList([Config.networkPrefix]);
     final compressedKey =
         Uint8List.fromList(prefix + privateKey.toList() + [0x01]);
     final checksum = _calculateChecksum(compressedKey);
@@ -111,5 +114,36 @@ class WalletService {
       if (a[i] != b[i]) return false;
     }
     return true;
+  }
+
+  Future<Map<String, dynamic>?> rpcRequest(String method,
+      [List<dynamic>? params]) async {
+    const rpcUrl = Config.rpcUrl;
+    const rpcUser = Config.rpcUser;
+    const rpcPassword = Config.rpcPassword;
+
+    final auth = 'Basic ${base64Encode(utf8.encode('$rpcUser:$rpcPassword'))}';
+    final headers = {'Content-Type': 'application/json', 'Authorization': auth};
+
+    final body = jsonEncode({
+      'jsonrpc': '1.0',
+      'id': 'curltext',
+      'method': method,
+      'params': params ?? [],
+    });
+
+    final response = await http.post(
+      Uri.parse(rpcUrl),
+      headers: headers,
+      body: body,
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      print('RPC Call Error: ${response.statusCode} ${response.reasonPhrase}');
+      print('Response body: ${response.body}');
+      return null;
+    }
   }
 }

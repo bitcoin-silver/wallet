@@ -14,7 +14,6 @@ class SendView extends StatefulWidget {
 class _SendViewState extends State<SendView> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
-  final TextEditingController _feeController = TextEditingController();
 
   double _balance = 0.0;
   bool _isChecked = false;
@@ -40,27 +39,13 @@ class _SendViewState extends State<SendView> {
     });
   }
 
-  void _setFee() {
-    setState(() {
-      _feeController.text = '0.00001';
-    });
-  }
-
   Future<void> _send() async {
     final walletProvider = Provider.of<WalletProvider>(context, listen: false);
     final amount = double.tryParse(_amountController.text);
-    final fee = double.tryParse(_feeController.text);
 
     if (amount == null || amount <= 0) {
       setState(() {
         _errorMessage = 'Invalid amount entered.';
-      });
-      return;
-    }
-
-    if (fee == null || fee <= 0) {
-      setState(() {
-        _errorMessage = 'Please enter a valid fee.';
       });
       return;
     }
@@ -72,7 +57,7 @@ class _SendViewState extends State<SendView> {
           if (walletProvider.utxos != null &&
               walletProvider.utxos!.isNotEmpty) {
             final result = await walletProvider.sendTransaction(
-                _addressController.text, amount, fee);
+                _addressController.text, amount);
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -212,46 +197,6 @@ class _SendViewState extends State<SendView> {
                       text: 'Max',
                       isPrimary: true,
                       onPressed: _setMaxAmount,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _feeController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        decoration: InputDecoration(
-                          labelText: 'Fee',
-                          labelStyle: const TextStyle(color: Colors.white),
-                          filled: true,
-                          fillColor: Colors.black,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                            borderSide: BorderSide.none,
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                            borderSide: const BorderSide(
-                                color: Colors.white, width: 1.0),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                            borderSide: const BorderSide(
-                                color: Colors.white, width: 1.0),
-                          ),
-                        ),
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    ButtonWidget(
-                      text: 'Auto',
-                      isPrimary: true,
-                      onPressed: _setFee,
                     ),
                   ],
                 ),

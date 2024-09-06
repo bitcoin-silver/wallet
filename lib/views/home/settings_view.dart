@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
+import 'package:bitcoinsilver_wallet/providers/transaction_provider.dart';
 import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 
 class SettingsView extends StatelessWidget {
@@ -10,6 +11,7 @@ class SettingsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final walletProvider = Provider.of<WalletProvider>(context);
+    final transactionProvider = Provider.of<TransactionProvider>(context);
     final privateKey = walletProvider.privateKey ?? '';
 
     return Scaffold(
@@ -82,6 +84,7 @@ class SettingsView extends StatelessWidget {
                     isPrimary: true,
                     onPressed: () async {
                       await walletProvider.deleteWallet();
+                      transactionProvider.clearTransactions();
                       if (context.mounted) {
                         Navigator.pushReplacementNamed(context, '/setup');
                       }

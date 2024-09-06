@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/providers/transaction_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
-import 'package:bitcoinsilver_wallet/views/home/transaction/receive_view.dart';
-import 'package:bitcoinsilver_wallet/views/home/transaction/send_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/transaction_widget.dart';
 import 'package:bitcoinsilver_wallet/modals/transaction_modal.dart';
 
@@ -32,13 +30,6 @@ class _TransactionsViewState extends State<TransactionsView> {
 
       if (address != null) {
         transactionProvider.fetchTransactions(address);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No wallet address found.'),
-            backgroundColor: Colors.red,
-          ),
-        );
       }
     });
   }
@@ -67,7 +58,6 @@ class _TransactionsViewState extends State<TransactionsView> {
     final address = walletProvider.address;
 
     if (address != null) {
-      transactionProvider.clearTransactions();
       await transactionProvider.fetchTransactions(address);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -91,29 +81,6 @@ class _TransactionsViewState extends State<TransactionsView> {
     final transactionProvider = Provider.of<TransactionProvider>(context);
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        actions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.arrow_downward, color: Colors.white),
-            onPressed: () {
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (context) => const ReceiveView()));
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.arrow_upward, color: Colors.white),
-            onPressed: () {
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (context) => const SendView()));
-            },
-          ),
-          const SizedBox(width: 16),
-        ],
-      ),
       body: RefreshIndicator(
         backgroundColor: const Color.fromARGB(255, 25, 25, 25),
         color: Colors.cyanAccent,
@@ -151,12 +118,14 @@ class _TransactionsViewState extends State<TransactionsView> {
                     ...transactionProvider.transactions
                         .map((tx) => TransactionTile(
                               tx: tx,
-                              onTap: () => _showTransactionDetails(tx.txid),
+                              onTap: () => _showTransactionDetails(tx['txid']),
                             )),
                     if (transactionProvider.isLoading)
                       const SizedBox(
                         height: 100,
-                        child: Center(child: CircularProgressIndicator()),
+                        child: Center(
+                            child:
+                                CircularProgressIndicator(color: Colors.white)),
                       ),
                   ],
                 ),

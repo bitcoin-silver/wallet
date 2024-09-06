@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:bitcoinsilver_wallet/providers/transaction_provider.dart';
+import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/views/home/transaction/receive_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/transaction/send_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/balance_widget.dart';
 import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
+import 'package:bitcoinsilver_wallet/widgets/transaction_widget.dart';
+import 'package:bitcoinsilver_wallet/modals/transaction_modal.dart';
 
 class WalletView extends StatefulWidget {
   const WalletView({super.key});
@@ -24,11 +29,34 @@ class _WalletViewState extends State<WalletView> {
   }
 
   Future<void> _onRefresh() async {
-    _balanceKey.currentState?.updateBalance();
+    final transactionProvider =
+        Provider.of<TransactionProvider>(context, listen: false);
+    final walletProvider = Provider.of<WalletProvider>(context, listen: false);
+    final address = walletProvider.address;
+    if (address != null) {
+      await transactionProvider.fetchTransactions(address);
+      _balanceKey.currentState?.updateBalance();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No wallet address found.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showTransactionDetails(String txid) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => TransactionModal(txid: txid),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final transactionProvider = Provider.of<TransactionProvider>(context);
+
     return Scaffold(
       body: RefreshIndicator(
         backgroundColor: const Color.fromARGB(255, 25, 25, 25),
@@ -51,8 +79,15 @@ class _WalletViewState extends State<WalletView> {
               ),
               child: Padding(
                 padding: const EdgeInsets.only(top: 50),
-                child: Column(
-                  children: [
+                child: Column(children: [
+                  if (transactionProvider.isLoading)
+                    const SizedBox(
+                      height: 100,
+                      child: Center(
+                          child:
+                              CircularProgressIndicator(color: Colors.white)),
+                    ),
+                  if (!transactionProvider.isLoading) ...[
                     BalanceWidget(key: _balanceKey),
                     Padding(
                       padding: const EdgeInsets.all(16.0),
@@ -86,8 +121,32 @@ class _WalletViewState extends State<WalletView> {
                         ],
                       ),
                     ),
+                    Column(
+                      children: [
+                        if (transactionProvider.transactions.isEmpty &&
+                            !transactionProvider.isLoading)
+                          const SizedBox(
+                            height: 100,
+                            child: Center(
+                              child: Text(
+                                'No transactions found',
+                                style: TextStyle(color: Colors.white54),
+                              ),
+                            ),
+                          ),
+                        const Text('Recent transactions',
+                            style: TextStyle(color: Colors.white54)),
+                        ...transactionProvider.transactions
+                            .take(2)
+                            .map((tx) => TransactionTile(
+                                  tx: tx,
+                                  onTap: () =>
+                                      _showTransactionDetails(tx['txid']),
+                                )),
+                      ],
+                    ),
                   ],
-                ),
+                ]),
               ),
             ),
           ),

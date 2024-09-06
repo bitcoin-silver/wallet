@@ -1,14 +1,11 @@
-import 'dart:math';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:http/http.dart' as http;
 import 'package:bitcoinsilver_wallet/config.dart';
 import 'package:bitcoinsilver_wallet/services/wallet_service.dart';
 
 class WalletProvider with ChangeNotifier {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
-  final WalletService _walletService = WalletService();
+  final WalletService _ws = WalletService();
 
   final String rpcUrl = Config.rpcUrl;
   final String rpcUser = Config.rpcUser;
@@ -31,7 +28,7 @@ class WalletProvider with ChangeNotifier {
   Future<void> loadWallet() async {
     _privateKey = await _storage.read(key: 'key');
     if (_privateKey != null) {
-      _address = _walletService.loadAddressFromKey(_privateKey!);
+      _address = _ws.loadAddressFromKey(_privateKey!);
     }
     notifyListeners();
   }
@@ -50,39 +47,12 @@ class WalletProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<Map<String, dynamic>?> _rpcRequest(String method,
-      [List<dynamic>? params]) async {
-    final auth = 'Basic ${base64Encode(utf8.encode('$rpcUser:$rpcPassword'))}';
-    final headers = {'Content-Type': 'application/json', 'Authorization': auth};
-
-    final body = jsonEncode({
-      'jsonrpc': '1.0',
-      'id': 'curltext',
-      'method': method,
-      'params': params ?? [],
-    });
-
-    final response = await http.post(
-      Uri.parse(rpcUrl),
-      headers: headers,
-      body: body,
-    );
-
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      print('RPC Call Error: ${response.statusCode} ${response.reasonPhrase}');
-      print('Response body: ${response.body}');
-      return null;
-    }
-  }
-
   Future<void> fetchUtxos() async {
     if (_address == null) {
       return;
     }
 
-    final result = await _rpcRequest('scantxoutset', [
+    final result = await _ws.rpcRequest('scantxoutset', [
       'start',
       [
         {'desc': 'addr($_address)'}
@@ -98,20 +68,21 @@ class WalletProvider with ChangeNotifier {
       }
       _balance = totalBalance;
     }
+
     notifyListeners();
   }
 
-  Future<Map<String, dynamic>> sendTransaction(
-      String toAddress, double amount, double fee) async {
+  Future<Map<String, dynamic>?> createTransaction(
+      String address, double? amount) async {
     await fetchUtxos();
-
-    if (_privateKey == null || _address == null) {
-      return {'success': false, 'message': 'Private key or address is missing'};
+    final feeResponse = await _ws.rpcRequest('estimatesmartfee', [10]);
+    if (feeResponse == null ||
+        feeResponse['result'] == null ||
+        feeResponse['result']['feerate'] == null) {
+      throw Exception('Fee rate could not be retrieved');
     }
 
-    double roundedAmount = (amount * pow(10, 8)).round() / pow(10, 8);
-    double roundedFee = (fee * pow(10, 8)).round() / pow(10, 8);
-    double totalAmount = roundedAmount + roundedFee;
+    double feeRate = feeResponse['result']['feerate'] * 100000000;
 
     List<Map<String, dynamic>> selectedUtxos = [];
     double accumulatedAmount = 0.0;
@@ -122,25 +93,63 @@ class WalletProvider with ChangeNotifier {
         'vout': utxo['vout'],
       });
       accumulatedAmount += utxo['amount'];
-      if (accumulatedAmount >= totalAmount) break;
     }
 
-    if (accumulatedAmount < totalAmount) {
-      return {'success': false, 'message': 'Not enough funds'};
+    int numOutputs = 2;
+    if (amount == null || amount >= accumulatedAmount) {
+      numOutputs = 1;
+      amount = accumulatedAmount;
     }
 
-    double changeAmount = accumulatedAmount - totalAmount;
-    if (changeAmount < 0) {
-      return {'success': false, 'message': 'Calculated change is negative'};
+    int txSize = (selectedUtxos.length * 148) + (numOutputs * 34) + 10;
+    int feeInSatoshis = (txSize * feeRate).toInt();
+    double feeInBitcoin = feeInSatoshis / 100000000;
+
+    if (amount == accumulatedAmount) {
+      if (accumulatedAmount <= feeInBitcoin) {
+        throw Exception('Insufficient funds to cover the fee');
+      }
+      amount -= feeInBitcoin;
+    } else {
+      if (accumulatedAmount < amount + feeInBitcoin) {
+        throw Exception('Insufficient UTXOs to cover the amount and the fee');
+      }
     }
 
-    final createRawResult = await _rpcRequest('createrawtransaction', [
+    double change = accumulatedAmount - amount - feeInBitcoin;
+    amount = double.parse(amount.toStringAsFixed(8));
+    change = double.parse(change.toStringAsFixed(8));
+
+    print('Amount to send: $amount');
+    print('Fee: $feeInBitcoin');
+    print('Change: $change');
+
+    if (change < 0) {
+      throw Exception('Insufficient funds to cover the amount and the fee');
+    }
+
+    final createRawResult = await _ws.rpcRequest('createrawtransaction', [
       selectedUtxos,
-      [
-        {toAddress: totalAmount},
-        {_address: changeAmount}
-      ]
+      (change > 0)
+          ? [
+              {address: amount},
+              {_address: change}
+            ]
+          : [
+              {address: amount}
+            ]
     ]);
+
+    return createRawResult;
+  }
+
+  Future<Map<String, dynamic>> sendTransaction(
+      String address, double amount) async {
+    if (_privateKey == null || _address == null) {
+      return {'success': false, 'message': 'Private key or address is missing'};
+    }
+
+    final createRawResult = await createTransaction(address, amount);
 
     if (createRawResult == null) {
       return {'success': false, 'message': 'Error creating raw transaction'};
@@ -148,7 +157,7 @@ class WalletProvider with ChangeNotifier {
 
     final rawTx = createRawResult['result'];
 
-    final signRawResult = await _rpcRequest('signrawtransactionwithkey', [
+    final signRawResult = await _ws.rpcRequest('signrawtransactionwithkey', [
       rawTx,
       [_privateKey]
     ]);
@@ -162,7 +171,8 @@ class WalletProvider with ChangeNotifier {
       return {'success': false, 'message': 'Transaction is not fully signed'};
     }
 
-    final sendRawResult = await _rpcRequest('sendrawtransaction', [signedTx]);
+    final sendRawResult =
+        await _ws.rpcRequest('sendrawtransaction', [signedTx, 0]);
 
     if (sendRawResult == null || sendRawResult['result'] == null) {
       return {'success': false, 'message': 'Error sending transaction'};

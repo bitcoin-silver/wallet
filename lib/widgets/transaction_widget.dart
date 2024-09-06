@@ -1,21 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:bitcoinsilver_wallet/models/transaction.dart';
 
 class TransactionTile extends StatelessWidget {
-  final Transaction tx;
+  final dynamic tx;
   final VoidCallback onTap;
 
   const TransactionTile({super.key, required this.tx, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final isSent = tx.sent > 0;
-    final icon = isSent ? Icons.arrow_downward : Icons.arrow_upward;
-    final color = isSent ? Colors.green : Colors.red;
-    final amount = isSent ? tx.sent : -tx.received;
-    final formattedDate =
-        DateFormat('dd MMM yyyy HH:mm:ss').format(tx.dateTime);
+    final amount = tx['amount'].toStringAsFixed(8);
+    final icon = tx['amount'] > 0 ? Icons.arrow_downward : Icons.arrow_upward;
+    final color = tx['amount'] > 0 ? Colors.green : Colors.red;
+    int timestampInSeconds = tx['timestamp'];
+    DateTime dateTime =
+        DateTime.fromMillisecondsSinceEpoch(timestampInSeconds * 1000);
+
+    final formattedDate = DateFormat('dd MMM yyyy HH:mm:ss').format(dateTime);
 
     return ListTile(
       leading: Icon(icon, color: color),
