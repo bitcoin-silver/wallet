@@ -133,6 +133,7 @@ class BalanceWidgetState extends State<BalanceWidget> {
         ),
         const SizedBox(height: 50),
         SizedBox(height: 250, child: LineChart(_buildChartData())),
+        const SizedBox(height: 10),
         Text(
           _timestamp != null ? 'Last refresh: $_timestamp' : '-',
           style: const TextStyle(color: Colors.white54, fontSize: 14),
