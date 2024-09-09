@@ -36,8 +36,7 @@ class _WalletViewState extends State<WalletView> {
     final address = walletProvider.address;
     if (address != null) {
       final DateTime now = DateTime.now();
-      final String formattedDate =
-          DateFormat('dd MMM yyyy HH:mm:ss').format(now);
+      final String formattedDate = DateFormat('HH:mm:ss').format(now);
       await transactionProvider.fetchTransactions(address);
       _balanceKey.currentState?.updateBalance(
           timestamp: formattedDate,
