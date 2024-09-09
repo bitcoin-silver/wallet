@@ -5,14 +5,31 @@ import 'package:bitcoinsilver_wallet/config.dart';
 
 class TransactionProvider with ChangeNotifier {
   final List<dynamic> _transactions = [];
+  double _price = 0.0;
   bool _isLoading = false;
   bool _hasMore = true;
   int _startIndex = 0;
   final int _limit = 50;
 
   List get transactions => _transactions;
+  double get price => _price;
   bool get isLoading => _isLoading;
   bool get hasMore => _hasMore;
+
+  Future<void> fetchPrice() async {
+    const url = '${Config.baseUrl}${Config.getPriceEndpoint}';
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        _price = data['last_price_usd'];
+      } else {
+        throw Exception('Failed to load price');
+      }
+    } finally {
+      notifyListeners();
+    }
+  }
 
   Future<void> fetchTransactions(String address) async {
     if (_isLoading) return;
@@ -39,6 +56,7 @@ class TransactionProvider with ChangeNotifier {
         throw Exception('Failed to load transactions');
       }
     } finally {
+      await fetchPrice();
       _isLoading = false;
       notifyListeners();
     }

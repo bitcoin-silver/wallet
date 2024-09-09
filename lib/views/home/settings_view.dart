@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/transaction_provider.dart';
-import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingsView extends StatelessWidget {
   const SettingsView({super.key});
@@ -79,10 +79,76 @@ class SettingsView extends StatelessWidget {
                     style: TextStyle(color: Colors.white54),
                   ),
                   const SizedBox(height: 20),
-                  ButtonWidget(
-                    text: 'Delete Wallet',
-                    isPrimary: true,
-                    onPressed: () async {
+                  ListTile(
+                    title: const Text(
+                      'Privacy Policy',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    leading: const Icon(Icons.description, color: Colors.white),
+                    onTap: () async {
+                      if (!await launchUrl(Uri.parse(
+                          'https://bitcoinsilver.top/assets/pdf/privacy_policy.pdf'))) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Could not open url.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  const Divider(color: Colors.white),
+                  ListTile(
+                    title: const Text(
+                      'Support',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    leading: const Icon(Icons.help, color: Colors.white),
+                    onTap: () async {
+                      if (!await launchUrl(
+                          Uri.parse('https://discord.com/invite/MCGn7dzvgd'))) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Could not open url.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  const Divider(color: Colors.white),
+                  ListTile(
+                    title: const Text(
+                      'About',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    leading: const Icon(Icons.info, color: Colors.white),
+                    onTap: () async {
+                      if (!await launchUrl(
+                          Uri.parse('https://bitcoinsilver.top'))) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Could not open url.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  const Divider(color: Colors.white),
+                  ListTile(
+                    title: const Text(
+                      'Delete Wallet',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                    leading: const Icon(Icons.delete, color: Colors.red),
+                    onTap: () async {
                       await walletProvider.deleteWallet();
                       transactionProvider.clearTransactions();
                       if (context.mounted) {

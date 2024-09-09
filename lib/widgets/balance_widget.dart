@@ -1,7 +1,5 @@
-import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:bitcoinsilver_wallet/providers/transaction_provider.dart';
 
 class BalanceWidget extends StatefulWidget {
   const BalanceWidget({super.key});
@@ -12,28 +10,26 @@ class BalanceWidget extends StatefulWidget {
 
 class BalanceWidgetState extends State<BalanceWidget> {
   List<dynamic> _transactions = [];
-  double? _reactiveBalance = 0.0;
-  double? _originalBalance;
+  String? _timestamp;
   double? _balance;
+  String? _balanceInUSD;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      updateBalance();
-    });
   }
 
-  void updateBalance() {
-    final transactionProvider =
-        Provider.of<TransactionProvider>(context, listen: false);
+  Future<void> updateBalance(
+      {required timestamp,
+      required transactions,
+      required double price}) async {
     if (mounted) {
       setState(() {
-        _transactions = transactionProvider.transactions;
-        _originalBalance =
-            _transactions.isNotEmpty ? _transactions[0]['balance'] : 0.0;
-        _balance = _originalBalance;
-        _reactiveBalance = _balance;
+        _timestamp = timestamp;
+        _balance = transactions.isNotEmpty ? transactions[0]['balance'] : 0.0;
+        double balanceInUsd = _balance! * price;
+        _balanceInUSD = balanceInUsd.toStringAsFixed(2);
+        _transactions = transactions;
       });
     }
   }
@@ -109,7 +105,16 @@ class BalanceWidgetState extends State<BalanceWidget> {
       children: [
         const SizedBox(height: 50),
         Text(
-          '$_reactiveBalance',
+          _balanceInUSD != null ? '$_balanceInUSD \$' : '-',
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        Text(
+          _balance != null ? '$_balance' : '-',
           style: const TextStyle(
             color: Colors.white,
             fontSize: 28,
@@ -128,6 +133,11 @@ class BalanceWidgetState extends State<BalanceWidget> {
         ),
         const SizedBox(height: 50),
         SizedBox(height: 250, child: LineChart(_buildChartData())),
+        Text(
+          _timestamp != null ? 'Last refresh: $_timestamp' : '-',
+          style: const TextStyle(color: Colors.white54, fontSize: 14),
+          textAlign: TextAlign.center,
+        ),
       ],
     );
   }

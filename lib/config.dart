@@ -9,4 +9,5 @@ class Config {
   static const String baseUrl = 'http://explorer.btcs.pools4mining.com:3001';
   static const String getAddressTxsEndpoint = '/ext/getaddresstxs';
   static const String getTxEndpoint = '/ext/gettx';
+  static const String getPriceEndpoint = '/ext/getcurrentprice';
 }

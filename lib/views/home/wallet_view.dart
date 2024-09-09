@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/providers/transaction_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
@@ -34,8 +35,14 @@ class _WalletViewState extends State<WalletView> {
     final walletProvider = Provider.of<WalletProvider>(context, listen: false);
     final address = walletProvider.address;
     if (address != null) {
+      final DateTime now = DateTime.now();
+      final String formattedDate =
+          DateFormat('dd MMM yyyy HH:mm:ss').format(now);
       await transactionProvider.fetchTransactions(address);
-      _balanceKey.currentState?.updateBalance();
+      _balanceKey.currentState?.updateBalance(
+          timestamp: formattedDate,
+          transactions: transactionProvider.transactions,
+          price: transactionProvider.price);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -134,8 +141,10 @@ class _WalletViewState extends State<WalletView> {
                               ),
                             ),
                           ),
-                        const Text('Recent transactions',
-                            style: TextStyle(color: Colors.white54)),
+                        if (transactionProvider.transactions.isNotEmpty &&
+                            !transactionProvider.isLoading)
+                          const Text('Recent transactions',
+                              style: TextStyle(color: Colors.white54)),
                         ...transactionProvider.transactions
                             .take(2)
                             .map((tx) => TransactionTile(
