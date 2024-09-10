@@ -26,9 +26,11 @@ class BalanceWidgetState extends State<BalanceWidget> {
     if (mounted) {
       setState(() {
         _timestamp = timestamp;
-        _balance = transactions.isNotEmpty ? transactions[0]['balance'] : 0.0;
+        _balance = transactions.isNotEmpty
+            ? transactions[0]['balance'].toDouble()
+            : 0.0;
         double balanceInUsd = _balance! * price;
-        _balanceInUSD = balanceInUsd.toStringAsFixed(2);
+        _balanceInUSD = balanceInUsd.toStringAsFixed(4);
         _transactions = transactions;
       });
     }
