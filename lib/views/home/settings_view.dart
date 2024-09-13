@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/transaction_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:bitcoinsilver_wallet/views/home/settings/privacy_view.dart';
 
 class SettingsView extends StatelessWidget {
   const SettingsView({super.key});
@@ -86,16 +87,11 @@ class SettingsView extends StatelessWidget {
                     ),
                     leading: const Icon(Icons.description, color: Colors.white),
                     onTap: () async {
-                      if (!await launchUrl(Uri.parse(
-                          'https://bitcoinsilver.top/assets/pdf/privacy_policy.pdf'))) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Could not open url.'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
+                      if (context.mounted) {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) => const PrivacyView()));
                       }
                     },
                   ),
