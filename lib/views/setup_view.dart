@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/services/wallet_service.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
+import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
 import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 
 class SetupView extends StatelessWidget {
@@ -18,9 +19,10 @@ class SetupView extends StatelessWidget {
         backgroundColor: Colors.green,
       ));
 
-      final walletProvider =
-          Provider.of<WalletProvider>(context, listen: false);
-      walletProvider.saveWallet(address, privateKey);
+      final wp = Provider.of<WalletProvider>(context, listen: false);
+      wp.saveWallet(address, privateKey);
+      final bp = Provider.of<BlockchainProvider>(context, listen: false);
+      bp.loadBlockchain(address);
       Navigator.pushReplacementNamed(context, '/home');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

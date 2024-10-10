@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
-import 'package:bitcoinsilver_wallet/views/home/transaction/scanner_view.dart';
+import 'package:bitcoinsilver_wallet/views/home/scanner_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 
 class SendView extends StatefulWidget {

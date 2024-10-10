@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:bitcoinsilver_wallet/config.dart';
 
-class TransactionProvider with ChangeNotifier {
+class BlockchainProvider with ChangeNotifier {
+  String _timestamp = '';
   final List<dynamic> _transactions = [];
   double _price = 0.0;
   bool _isLoading = false;
@@ -11,18 +13,27 @@ class TransactionProvider with ChangeNotifier {
   int _startIndex = 0;
   final int _limit = 50;
 
+  String get timestamp => _timestamp;
   List get transactions => _transactions;
   double get price => _price;
   bool get isLoading => _isLoading;
   bool get hasMore => _hasMore;
 
+  Future<void> loadBlockchain(address) async {
+    final DateTime now = DateTime.now();
+    final String formattedDate = DateFormat('HH:mm:ss').format(now);
+    await fetchTransactions(address);
+    _timestamp = formattedDate;
+    notifyListeners();
+  }
+
   Future<void> fetchPrice() async {
-    const url = '${Config.baseUrl}${Config.getPriceEndpoint}';
+    const url = Config.priceUrl;
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        _price = data['last_price_usd'];
+        _price = double.parse(data['data']['last']);
       } else {
         throw Exception('Failed to load price');
       }
@@ -36,7 +47,7 @@ class TransactionProvider with ChangeNotifier {
     _isLoading = true;
 
     final url =
-        '${Config.baseUrl}${Config.getAddressTxsEndpoint}/$address/$_startIndex/$_limit';
+        '${Config.explorerUrl}${Config.getAddressTxsEndpoint}/$address/$_startIndex/$_limit';
 
     try {
       final response = await http.get(Uri.parse(url));

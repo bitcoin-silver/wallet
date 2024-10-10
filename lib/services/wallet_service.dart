@@ -15,14 +15,10 @@ class WalletService {
 
   String? generatePrivateKey() {
     String? key;
-    String? address;
-
     final seed = List<int>.generate(32, (i) => Random.secure().nextInt(256));
     final root = bip32.BIP32.fromSeed(Uint8List.fromList(seed));
     final child = root.derivePath('m/0/0');
     key = _privateKeyToWif(child.privateKey!);
-    address = loadAddressFromKey(key);
-    print('$address, $key');
     return key;
   }
 

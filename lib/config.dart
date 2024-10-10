@@ -6,8 +6,10 @@ class Config {
   static const String rpcUser = 'btcswallet';
   static const String rpcPassword = 'h&@w7?4';
 
-  static const String baseUrl = 'http://explorer.btcs.pools4mining.com:3001';
+  static const String explorerUrl =
+      'http://explorer.btcs.pools4mining.com:3001';
   static const String getAddressTxsEndpoint = '/ext/getaddresstxs';
   static const String getTxEndpoint = '/ext/gettx';
-  static const String getPriceEndpoint = '/ext/getcurrentprice';
+
+  static const String priceUrl = 'http://213.165.83.94/api';
 }

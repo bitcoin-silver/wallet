@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:bitcoinsilver_wallet/providers/transaction_provider.dart';
+import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/widgets/transaction_widget.dart';
 import 'package:bitcoinsilver_wallet/modals/transaction_modal.dart';
@@ -20,45 +20,26 @@ class _TransactionsViewState extends State<TransactionsView> {
     super.initState();
     _scrollController = ScrollController();
     _scrollController.addListener(_scrollListener);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final transactionProvider =
-          Provider.of<TransactionProvider>(context, listen: false);
-      final walletProvider =
-          Provider.of<WalletProvider>(context, listen: false);
-      final address = walletProvider.address;
-
-      if (address != null) {
-        transactionProvider.fetchTransactions(address);
-      }
-    });
   }
 
   void _scrollListener() {
     if (_scrollController.position.pixels ==
         _scrollController.position.maxScrollExtent) {
-      final transactionProvider =
-          Provider.of<TransactionProvider>(context, listen: false);
-      final walletProvider =
-          Provider.of<WalletProvider>(context, listen: false);
-      final address = walletProvider.address;
-
-      if (address != null &&
-          transactionProvider.hasMore &&
-          !transactionProvider.isLoading) {
-        transactionProvider.fetchTransactions(address);
+      final bp = Provider.of<BlockchainProvider>(context, listen: false);
+      final wp = Provider.of<WalletProvider>(context, listen: false);
+      final address = wp.address;
+      if (address != null && bp.hasMore && !bp.isLoading) {
+        bp.fetchTransactions(address);
       }
     }
   }
 
   Future<void> _onRefresh() async {
-    final transactionProvider =
-        Provider.of<TransactionProvider>(context, listen: false);
-    final walletProvider = Provider.of<WalletProvider>(context, listen: false);
-    final address = walletProvider.address;
-
+    final bp = Provider.of<BlockchainProvider>(context, listen: false);
+    final wp = Provider.of<WalletProvider>(context, listen: false);
+    final address = wp.address;
     if (address != null) {
-      await transactionProvider.fetchTransactions(address);
+      await bp.fetchTransactions(address);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -78,9 +59,24 @@ class _TransactionsViewState extends State<TransactionsView> {
 
   @override
   Widget build(BuildContext context) {
-    final transactionProvider = Provider.of<TransactionProvider>(context);
+    final bp = Provider.of<BlockchainProvider>(context);
 
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        title: const Text(
+          'Transactions',
+          style: TextStyle(color: Colors.white, fontSize: 20),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
+        centerTitle: true,
+      ),
       body: RefreshIndicator(
         backgroundColor: const Color.fromARGB(255, 25, 25, 25),
         color: Colors.cyanAccent,
@@ -100,35 +96,30 @@ class _TransactionsViewState extends State<TransactionsView> {
                   end: Alignment.bottomCenter,
                 ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.only(top: kToolbarHeight),
-                child: Column(
-                  children: [
-                    if (transactionProvider.transactions.isEmpty &&
-                        !transactionProvider.isLoading)
-                      const SizedBox(
-                        height: 100,
-                        child: Center(
-                          child: Text(
-                            'No transactions found',
-                            style: TextStyle(color: Colors.white54),
-                          ),
+              child: Column(
+                children: [
+                  if (bp.transactions.isEmpty && !bp.isLoading)
+                    const SizedBox(
+                      height: 100,
+                      child: Center(
+                        child: Text(
+                          'No transactions found',
+                          style: TextStyle(color: Colors.white54),
                         ),
                       ),
-                    ...transactionProvider.transactions
-                        .map((tx) => TransactionTile(
-                              tx: tx,
-                              onTap: () => _showTransactionDetails(tx['txid']),
-                            )),
-                    if (transactionProvider.isLoading)
-                      const SizedBox(
-                        height: 100,
-                        child: Center(
-                            child:
-                                CircularProgressIndicator(color: Colors.white)),
-                      ),
-                  ],
-                ),
+                    ),
+                  ...bp.transactions.map((tx) => TransactionTile(
+                        tx: tx,
+                        onTap: () => _showTransactionDetails(tx['txid']),
+                      )),
+                  if (bp.isLoading)
+                    const SizedBox(
+                      height: 100,
+                      child: Center(
+                          child:
+                              CircularProgressIndicator(color: Colors.white)),
+                    ),
+                ],
               ),
             ),
           ),

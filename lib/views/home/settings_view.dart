@@ -3,17 +3,17 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
-import 'package:bitcoinsilver_wallet/providers/transaction_provider.dart';
-import 'package:bitcoinsilver_wallet/views/home/settings/privacy_view.dart';
+import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
+import 'package:bitcoinsilver_wallet/views/home/privacy_view.dart';
 
 class SettingsView extends StatelessWidget {
   const SettingsView({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final walletProvider = Provider.of<WalletProvider>(context);
-    final transactionProvider = Provider.of<TransactionProvider>(context);
-    final privateKey = walletProvider.privateKey ?? '';
+    final wp = Provider.of<WalletProvider>(context);
+    final bp = Provider.of<BlockchainProvider>(context);
+    final privateKey = wp.privateKey ?? '';
 
     return Scaffold(
       body: SingleChildScrollView(
@@ -145,8 +145,8 @@ class SettingsView extends StatelessWidget {
                     ),
                     leading: const Icon(Icons.delete, color: Colors.red),
                     onTap: () async {
-                      await walletProvider.deleteWallet();
-                      transactionProvider.clearTransactions();
+                      await wp.deleteWallet();
+                      bp.clearTransactions();
                       if (context.mounted) {
                         Navigator.pushReplacementNamed(context, '/setup');
                       }

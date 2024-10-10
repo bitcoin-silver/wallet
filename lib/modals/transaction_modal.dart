@@ -25,7 +25,7 @@ class _TransactionModalState extends State<TransactionModal> {
 
   Future<void> _fetchTransactionData() async {
     final txid = widget.txid;
-    final url = '${Config.baseUrl}${Config.getTxEndpoint}/$txid';
+    final url = '${Config.explorerUrl}${Config.getTxEndpoint}/$txid';
 
     try {
       final response = await http.get(Uri.parse(url));
