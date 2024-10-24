@@ -11,5 +11,5 @@ class Config {
   static const String getAddressTxsEndpoint = '/ext/getaddresstxs';
   static const String getTxEndpoint = '/ext/gettx';
 
-  static const String priceUrl = 'http://213.165.83.94/api';
+  static const String priceUrl = 'https://bitcoinsilver.top/api/';
 }

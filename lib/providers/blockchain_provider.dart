@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
@@ -29,14 +30,23 @@ class BlockchainProvider with ChangeNotifier {
 
   Future<void> fetchPrice() async {
     const url = Config.priceUrl;
+    final HttpClient httpClient = HttpClient();
+    httpClient.badCertificateCallback =
+        (X509Certificate cert, String host, int port) => true;
     try {
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+      final HttpClientRequest request = await httpClient.getUrl(Uri.parse(url));
+      final HttpClientResponse httpResponse = await request.close();
+      if (httpResponse.statusCode == 200) {
+        final String responseBody =
+            await httpResponse.transform(utf8.decoder).join();
+        final data = json.decode(responseBody);
         _price = double.parse(data['data']['last']);
       } else {
-        throw Exception('Failed to load price');
+        throw Exception(
+            'Failed to load price, Status Code: ${httpResponse.statusCode}');
       }
+    } catch (e) {
+      print('Error: $e');
     } finally {
       notifyListeners();
     }
