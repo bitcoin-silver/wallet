@@ -75,14 +75,6 @@ class WalletProvider with ChangeNotifier {
   Future<Map<String, dynamic>?> createTransaction(
       String address, double? amount) async {
     await fetchUtxos();
-    final feeResponse = await _ws.rpcRequest('estimatesmartfee', [10]);
-    if (feeResponse == null ||
-        feeResponse['result'] == null ||
-        feeResponse['result']['feerate'] == null) {
-      throw Exception('Fee rate could not be retrieved');
-    }
-
-    double feeRate = feeResponse['result']['feerate'] * 100000000;
 
     List<Map<String, dynamic>> selectedUtxos = [];
     double accumulatedAmount = 0.0;
@@ -95,15 +87,11 @@ class WalletProvider with ChangeNotifier {
       accumulatedAmount += utxo['amount'];
     }
 
-    int numOutputs = 2;
     if (amount == null || amount >= accumulatedAmount) {
-      numOutputs = 1;
       amount = accumulatedAmount;
     }
 
-    int txSize = (selectedUtxos.length * 148) + (numOutputs * 34) + 10;
-    int feeInSatoshis = (txSize * feeRate).toInt();
-    double feeInBitcoin = feeInSatoshis / 100000000;
+    double feeInBitcoin = 0.0001;
 
     if (amount == accumulatedAmount) {
       if (accumulatedAmount <= feeInBitcoin) {
