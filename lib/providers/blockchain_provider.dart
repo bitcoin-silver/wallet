@@ -23,6 +23,12 @@ class BlockchainProvider with ChangeNotifier {
   Future<void> loadBlockchain(address) async {
     final DateTime now = DateTime.now();
     final String formattedDate = DateFormat('HH:mm:ss').format(now);
+
+    // Clear existing transactions and reset pagination to fetch latest
+    _transactions.clear();
+    _startIndex = 0;
+    _hasMore = true;
+
     await fetchTransactions(address);
     _timestamp = formattedDate;
     notifyListeners();
@@ -46,7 +52,7 @@ class BlockchainProvider with ChangeNotifier {
             'Failed to load price, Status Code: ${httpResponse.statusCode}');
       }
     } catch (e) {
-      print('Error: $e');
+      //print('Error: $e');
     } finally {
       notifyListeners();
     }

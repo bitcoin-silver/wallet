@@ -41,3 +41,20 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Credentials and environment configuration
+dart_defines.json
+.env
+.env.*
+!.env.example
+build.sh
+build_playstore.sh
+**/credentials.*
+**/secrets.*
+
+# Android signing
+*.jks
+*.keystore
+key.properties
+android/key.properties
+android/app/keystore.jks
