@@ -3,7 +3,10 @@ import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/widgets/transaction_widget.dart';
+import 'package:bitcoinsilver_wallet/widgets/skeleton_loader.dart';
+import 'package:bitcoinsilver_wallet/widgets/empty_state.dart';
 import 'package:bitcoinsilver_wallet/modals/transaction_modal.dart';
+import 'package:bitcoinsilver_wallet/views/home/receive_view.dart';
 
 class TransactionsView extends StatefulWidget {
   const TransactionsView({super.key});
@@ -22,6 +25,12 @@ class _TransactionsViewState extends State<TransactionsView> {
     _scrollController.addListener(_scrollListener);
   }
 
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   void _scrollListener() {
     if (_scrollController.position.pixels ==
         _scrollController.position.maxScrollExtent) {
@@ -38,8 +47,50 @@ class _TransactionsViewState extends State<TransactionsView> {
     final bp = Provider.of<BlockchainProvider>(context, listen: false);
     final wp = Provider.of<WalletProvider>(context, listen: false);
     final address = wp.address;
+
     if (address != null) {
-      await bp.fetchTransactions(address);
+      // Show feedback message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.cyanAccent),
+                ),
+              ),
+              SizedBox(width: 12),
+              Text('Checking for new transactions...'),
+            ],
+          ),
+          backgroundColor: Colors.black87,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // Use loadBlockchain to reset pagination and fetch from beginning
+      await bp.loadBlockchain(address);
+
+      // Show completion message
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 18),
+                SizedBox(width: 12),
+                Text('Transactions updated'),
+              ],
+            ),
+            backgroundColor: Colors.black87,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -99,25 +150,37 @@ class _TransactionsViewState extends State<TransactionsView> {
               child: Column(
                 children: [
                   if (bp.transactions.isEmpty && !bp.isLoading)
-                    const SizedBox(
-                      height: 100,
-                      child: Center(
-                        child: Text(
-                          'No transactions found',
-                          style: TextStyle(color: Colors.white54),
-                        ),
+                    SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.6,
+                      child: EmptyState(
+                        icon: Icons.history,
+                        title: 'No Transaction History',
+                        message: 'Your transaction history will appear here once you start using your wallet',
+                        actionText: 'Receive BTCS',
+                        onAction: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ReceiveView(),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ...bp.transactions.map((tx) => TransactionTile(
                         tx: tx,
                         onTap: () => _showTransactionDetails(tx['txid']),
                       )),
-                  if (bp.isLoading)
+                  if (bp.isLoading && bp.transactions.isEmpty)
+                    // Show skeleton loaders for initial load
+                    ...List.generate(5, (index) => const TransactionSkeleton())
+                  else if (bp.isLoading)
+                    // Show spinner for loading more
                     const SizedBox(
                       height: 100,
                       child: Center(
                           child:
-                              CircularProgressIndicator(color: Colors.white)),
+                              CircularProgressIndicator(color: Colors.cyanAccent)),
                     ),
                 ],
               ),

@@ -1,0 +1,5 @@
+{
+  "RPC_URL": "http://YOUR_RPC_URL:PORT",
+  "RPC_USER": "your_rpc_username",
+  "RPC_PASSWORD": "your_rpc_password"
+}

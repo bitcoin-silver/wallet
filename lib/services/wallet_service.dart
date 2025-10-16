@@ -8,10 +8,12 @@ import 'package:crypto/crypto.dart';
 import 'package:bech32/bech32.dart';
 import 'package:base_x/base_x.dart';
 import 'package:bitcoinsilver_wallet/config.dart';
+import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
 
 class WalletService {
   final BaseXCodec base58 =
       BaseXCodec('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
+  final RpcConfigService _rpcConfig = RpcConfigService();
 
   String? generatePrivateKey() {
     String? key;
@@ -31,8 +33,8 @@ class WalletService {
 
       return _encodeBech32Address(Config.addressPrefix, 0, pubKeyHash);
     } catch (e, stacktrace) {
-      print('Error recovering address from WIF: $e');
-      print(stacktrace);
+      //print('Error recovering address from WIF: $e');
+      //print(stacktrace);
       return null;
     }
   }
@@ -54,8 +56,7 @@ class WalletService {
 
     final calculatedChecksum = _calculateChecksum(keyWithChecksum);
     if (!_listEquals(checksum, calculatedChecksum)) {
-      print(
-          'Checksum mismatch: expected $checksum but got $calculatedChecksum');
+      //print('Checksum mismatch: expected $checksum but got $calculatedChecksum');
       throw Exception('Invalid WIF checksum');
     }
 
@@ -112,11 +113,10 @@ class WalletService {
     return true;
   }
 
-  Future<Map<String, dynamic>?> rpcRequest(String method,
-      [List<dynamic>? params]) async {
-    const rpcUrl = Config.rpcUrl;
-    const rpcUser = Config.rpcUser;
-    const rpcPassword = Config.rpcPassword;
+  Future<Map<String, dynamic>?> rpcRequest(String method, [List<dynamic>? params]) async {
+    final rpcUrl = await _rpcConfig.getRpcUrl();
+    final rpcUser = await _rpcConfig.getRpcUser();
+    final rpcPassword = await _rpcConfig.getRpcPassword();
 
     final auth = 'Basic ${base64Encode(utf8.encode('$rpcUser:$rpcPassword'))}';
     final headers = {'Content-Type': 'application/json', 'Authorization': auth};
@@ -134,12 +134,47 @@ class WalletService {
       body: body,
     );
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+    final decoded = jsonDecode(response.body);
+    //print('Response body: ${response.body}');
+
+    return decoded; // ✅ Always return the parsed body
+  }
+
+  // Batch RPC request - send multiple requests in one HTTP call
+  Future<List<Map<String, dynamic>?>> batchRpcRequest(
+      List<Map<String, dynamic>> requests) async {
+    final rpcUrl = await _rpcConfig.getRpcUrl();
+    final rpcUser = await _rpcConfig.getRpcUser();
+    final rpcPassword = await _rpcConfig.getRpcPassword();
+
+    final auth = 'Basic ${base64Encode(utf8.encode('$rpcUser:$rpcPassword'))}';
+    final headers = {'Content-Type': 'application/json', 'Authorization': auth};
+
+    // Build batch request body
+    final batchBody = requests
+        .asMap()
+        .entries
+        .map((entry) => {
+              'jsonrpc': '1.0',
+              'id': entry.key,
+              'method': entry.value['method'],
+              'params': entry.value['params'] ?? [],
+            })
+        .toList();
+
+    final response = await http.post(
+      Uri.parse(rpcUrl),
+      headers: headers,
+      body: jsonEncode(batchBody),
+    );
+
+    final decoded = jsonDecode(response.body);
+
+    // Handle both single and batch responses
+    if (decoded is List) {
+      return decoded.cast<Map<String, dynamic>?>();
     } else {
-      print('RPC Call Error: ${response.statusCode} ${response.reasonPhrase}');
-      print('Response body: ${response.body}');
-      return null;
+      return [decoded as Map<String, dynamic>?];
     }
   }
 }
