@@ -132,6 +132,11 @@ class WalletService {
       Uri.parse(rpcUrl),
       headers: headers,
       body: body,
+    ).timeout(
+      const Duration(seconds: 30),
+      onTimeout: () {
+        throw Exception('RPC request timed out after 30 seconds');
+      },
     );
 
     final decoded = jsonDecode(response.body);
@@ -166,6 +171,11 @@ class WalletService {
       Uri.parse(rpcUrl),
       headers: headers,
       body: jsonEncode(batchBody),
+    ).timeout(
+      const Duration(seconds: 45),
+      onTimeout: () {
+        throw Exception('Batch RPC request timed out after 45 seconds');
+      },
     );
 
     final decoded = jsonDecode(response.body);

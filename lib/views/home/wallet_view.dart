@@ -9,6 +9,7 @@ import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/views/home/receive_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/send_view.dart';
+import 'package:bitcoinsilver_wallet/views/home/addressbook_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 import 'package:bitcoinsilver_wallet/modals/transaction_modal.dart';
 import 'package:bitcoinsilver_wallet/views/home/transactions_view.dart';
@@ -81,11 +82,24 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
               wp.hasPendingTransactions
                   ? 'Checking for confirmations...'
                   : 'Syncing wallet data...',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),
-        backgroundColor: Colors.black87,
+        backgroundColor: const Color(0xFF2A2A2A),
         duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: Colors.cyanAccent.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
       ),
     );
 
@@ -102,16 +116,31 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
     if (mounted) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
+        SnackBar(
+          content: const Row(
             children: [
               Icon(Icons.check_circle, color: Colors.green, size: 18),
               SizedBox(width: 12),
-              Text('Wallet synced'),
+              Text(
+                'Wallet synced',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
-          backgroundColor: Colors.black87,
-          duration: Duration(seconds: 1),
+          backgroundColor: const Color(0xFF2A2A2A),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: Colors.green.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
         ),
       );
     }
@@ -419,9 +448,12 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
         : '\$0.00';
 
     return Scaffold(
-      body: RefreshIndicator(
-        backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+      body: Stack(
+        children: [
+          RefreshIndicator(
+        backgroundColor: const Color(0xFF3A3A3A),
         color: Colors.cyanAccent,
+        strokeWidth: 3,
         onRefresh: _onRefresh,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -462,13 +494,10 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                           ),
                         ),
                         // Transactions Section Skeleton
-                        Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: SilverCard(
+                            padding: const EdgeInsets.all(16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -481,6 +510,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                               ...List.generate(3, (index) => const TransactionSkeleton()),
                             ],
                           ),
+                        ),
                         ),
                       ] else ...[
                         // Balance Display
@@ -563,23 +593,17 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                             const SizedBox(height: 30),
 
                             // Chart Container
-                            Container(
-                              height: 200,
-                              margin: const EdgeInsets.symmetric(horizontal: 16),
-                              padding: const EdgeInsets.only(
-                                top: 20,
-                                bottom: 10,
-                                left: 5,
-                                right: 20,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.05),
-                                  width: 1,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: SilverCard(
+                                padding: const EdgeInsets.only(
+                                  top: 20,
+                                  bottom: 10,
+                                  left: 5,
+                                  right: 20,
                                 ),
-                              ),
+                                child: SizedBox(
+                                  height: 200,
                               child: transactions.isEmpty
                                   ? Center(
                                 child: Column(
@@ -613,6 +637,8 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                   : LineChart(
                                 _buildChartData(transactions, displayBalance),
                                 duration: const Duration(milliseconds: 250),
+                              ),
+                                ),
                               ),
                             ),
 
@@ -737,13 +763,10 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                         ),
 
                         // Transactions Section
-                        Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: SilverCard(
+                            padding: const EdgeInsets.all(16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -906,6 +929,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                             ],
                           ),
                         ),
+                        ),
                       ],
                     ],
                   ),
@@ -914,6 +938,81 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
             ),
           ),
         ),
+      ),
+          // Addressbook button in top-right corner - Modern glassmorphic design
+          Positioned(
+            top: 20,
+            right: 16,
+            child: SafeArea(
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AddressbookView(),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.cyanAccent.withOpacity(0.9),
+                        Colors.cyanAccent.withOpacity(0.7),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.cyanAccent.withOpacity(0.4),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 4),
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Background glow effect
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              Colors.white.withOpacity(0.3),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+                      // Icon
+                      const Icon(
+                        Icons.contact_page_rounded,
+                        color: Colors.black,
+                        size: 26,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

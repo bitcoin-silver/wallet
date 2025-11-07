@@ -85,6 +85,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
     _fetchQutradeVolume();
     _fetchNestexVolume();
     _fetchKlingexVolume();
+    _fetchBitstorageVolume();
   }
 
   Future<void> _fetchMoneySupply() async {
@@ -96,9 +97,14 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
 
     try {
       final response = await http.get(
-        Uri.parse('http://explorer.btcs.pools4mining.com:3001/ext/getmoneysupply'),
+        Uri.parse('https://explorer.bitcoinsilver.top/ext/getmoneysupply'),
         headers: {'Accept': 'application/json'},
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
+      );
 
       if (response.statusCode == 200) {
         final responseBody = response.body.trim();
@@ -120,11 +126,14 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
               });
             }
           } catch (e) {
-            //print('Error parsing money supply JSON: $e');
+            debugPrint('Error parsing money supply JSON: $e');
           }
         }
+      } else {
+        debugPrint('Money supply fetch failed with status: ${response.statusCode}');
       }
     } catch (e) {
+      debugPrint('Error fetching money supply: $e');
       setState(() {
         _moneySupply = 100000000; // 100M fallback
       });
@@ -140,27 +149,60 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
       final response = await http.get(
         Uri.parse('https://api.exbitron.com/api/v1/trading/info/BTCS-USDT'),
         headers: {'Accept': 'application/json'},
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
+      );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['status'] == 'OK' && data['data'] != null) {
-          // Convert to string first, then parse as double for consistency
-          final volume24h = double.tryParse(
-              data['data']['market']['marketDynamics']['volume24h'].toString()
-          ) ?? 0.0;
-
+        // Check if response body is empty or invalid before parsing
+        if (response.body.trim().isEmpty) {
           setState(() {
-            if (volume24h > 0) {
-              _exbitronVolume = '\$${volume24h.toStringAsFixed(2)}';
-            } else {
-              _exbitronVolume = 'Low Volume';
-            }
+            _exbitronVolume = 'Trade Now';
+          });
+          return;
+        }
+
+        try {
+          final data = jsonDecode(response.body);
+          if (data['status'] == 'OK' && data['data'] != null) {
+            // Convert to string first, then parse as double for consistency
+            final volume24h = double.tryParse(
+                data['data']['market']['marketDynamics']['volume24h'].toString()
+            ) ?? 0.0;
+
+            setState(() {
+              if (volume24h > 0) {
+                _exbitronVolume = '\$${volume24h.toStringAsFixed(2)}';
+              } else {
+                _exbitronVolume = 'Low Volume';
+              }
+            });
+          } else {
+            setState(() {
+              _exbitronVolume = 'Trade Now';
+            });
+          }
+        } on FormatException {
+          // Silent handling when JSON is invalid (exchange is down)
+          setState(() {
+            _exbitronVolume = 'Trade Now';
           });
         }
+      } else {
+        setState(() {
+          _exbitronVolume = 'Trade Now';
+        });
       }
     } catch (e) {
-      //print('Error fetching Exbitron volume: $e');
+      // Silent handling - exchange may be temporarily down
+      if (mounted) {
+        setState(() {
+          _exbitronVolume = 'Trade Now';
+        });
+      }
     }
   }
 
@@ -169,7 +211,12 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
       final response = await http.get(
         Uri.parse('https://qutrade.io/api/v1/market_data/?pair=btcs_usdt'),
         headers: {'Accept': 'application/json'},
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -188,9 +235,16 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
             });
           }
         }
+      } else {
+        setState(() {
+          _qutradeVolume = 'Data unavailable';
+        });
       }
     } catch (e) {
-      //print('Error fetching Qutrade volume: $e');
+      debugPrint('Error fetching Qutrade volume: $e');
+      setState(() {
+        _qutradeVolume = 'Trade Now';
+      });
     }
   }
 
@@ -199,7 +253,12 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
       final response = await http.get(
         Uri.parse('https://trade.nestex.one/api/cg/tickers/BTCS_USDT'),
         headers: {'Accept': 'application/json'},
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -215,9 +274,16 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
             }
           });
         }
+      } else {
+        setState(() {
+          _nestexVolume = 'Data unavailable';
+        });
       }
     } catch (e) {
-      //print('Error fetching Nestex volume: $e');
+      debugPrint('Error fetching Nestex volume: $e');
+      setState(() {
+        _nestexVolume = 'Trade Now';
+      });
     }
   }
 
@@ -226,7 +292,12 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
       final response = await http.get(
         Uri.parse('https://api.klingex.io/api/tickers'),
         headers: {'Accept': 'application/json'},
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
+      );
 
       if (response.statusCode == 200) {
         final List<dynamic> tickers = jsonDecode(response.body);
@@ -249,11 +320,68 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
               _klingexVolume = 'Low Volume';
             }
           });
-          //print('KlingEx BTCS volume: ${btcsTicker['base_volume']} BTCS, USDT volume: $usdtVolume');
+        } else {
+          setState(() {
+            _klingexVolume = 'Data unavailable';
+          });
         }
+      } else {
+        setState(() {
+          _klingexVolume = 'Data unavailable';
+        });
       }
     } catch (e) {
-      //print('Error fetching KlingEx volume: $e');
+      debugPrint('Error fetching KlingEx volume: $e');
+      setState(() {
+        _klingexVolume = 'Trade Now';
+      });
+    }
+  }
+
+  Future<void> _fetchBitstorageVolume() async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://api.bitstorage.finance/v1/public/ticker?pair=BTCSUSDT'),
+        headers: {'Accept': 'application/json'},
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['status'] == true && data['data'] != null) {
+          // Get the last price and 24h volume
+          final lastPrice = double.tryParse(data['data']['last'].toString()) ?? 0.0;
+          final volume24h = double.tryParse(data['data']['volume_24H'].toString()) ?? 0.0;
+
+          // Calculate volume in USD (volume * last price)
+          final usdtVolume = volume24h * lastPrice;
+
+          setState(() {
+            if (usdtVolume > 0) {
+              _bitstorageVolume = '\$${usdtVolume.toStringAsFixed(2)}';
+            } else {
+              _bitstorageVolume = 'Low Volume';
+            }
+          });
+        } else {
+          setState(() {
+            _bitstorageVolume = 'Data unavailable';
+          });
+        }
+      } else {
+        setState(() {
+          _bitstorageVolume = 'Data unavailable';
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching Bitstorage volume: $e');
+      setState(() {
+        _bitstorageVolume = 'Trade Now';
+      });
     }
   }
 
@@ -423,21 +551,28 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                   const SizedBox(height: 25),
 
                   // Title and Subtitle
-                  ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [Colors.cyanAccent, Colors.white],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ).createShader(bounds),
-                    child: const Text(
-                      'BTCS EXCHANGES',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2.5,
+                  SilverBorder(
+                    borderWidth: 3,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [Colors.cyanAccent, Colors.white],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ).createShader(bounds),
+                        child: const Text(
+                          'BTCS EXCHANGES',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2.5,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                      textAlign: TextAlign.center,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -455,23 +590,8 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                   const SizedBox(height: 30),
 
                   // Live Price Ticker
-                  Container(
+                  SilverCard(
                     padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.cyanAccent.withOpacity(0.2),
-                          Colors.blue.withOpacity(0.1),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.cyanAccent.withOpacity(0.3),
-                        width: 1,
-                      ),
-                    ),
                     child: Column(
                       children: [
                         Row(
@@ -549,16 +669,8 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                   const SizedBox(height: 30),
 
                   // Markets Header
-                  Container(
+                  SilverCard(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.cyanAccent.withOpacity(0.2),
-                        width: 1,
-                      ),
-                    ),
                     child: Row(
                       children: [
                         const Icon(

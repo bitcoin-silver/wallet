@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
+import 'package:bitcoinsilver_wallet/providers/addressbook_provider.dart';
 import 'package:bitcoinsilver_wallet/views/setup_view.dart';
 import 'package:bitcoinsilver_wallet/views/biometric_gate.dart';
 import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
@@ -16,35 +17,53 @@ void main() async {
   final rpcConfig = RpcConfigService();
   await rpcConfig.initializeRpcCredentials();
 
-  // Add system UI customization
+  // Enable edge-to-edge display for Android 15+ compatibility
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.edgeToEdge,
+  );
+
+  // Add system UI customization with edge-to-edge support
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
+      statusBarIconBrightness: Brightness.light, // Light icons on dark background
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarContrastEnforced: false,
     ),
   );
 
-  // Set preferred orientations
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // Note: Removed orientation restrictions to support large screen devices
+  // (tablets, foldables) as required by Android 16+
+  // The app now supports all orientations for better user experience
 
   // Initialize providers with error handling
   final wp = WalletProvider();
   final bp = BlockchainProvider();
 
+  // Load wallet synchronously (fast, only reads from secure storage)
   try {
     await wp.loadWallet();
-    if (wp.address != null) {
-      await wp.fetchUtxos(force: true);
-      await bp.loadBlockchain(wp.address);
-    }
   } catch (e) {
     if (kDebugMode) {
-      //print('Error during initialization: $e');
+      debugPrint('Error loading wallet: $e');
     }
-    // Continue anyway - the app can handle missing data
+  }
+
+  // Don't block app startup - load data in background after app shows
+  // This makes the app feel much faster
+  if (wp.address != null) {
+    // Schedule background data loading after app is displayed
+    Future.microtask(() async {
+      try {
+        await wp.fetchUtxos(force: true);
+        await bp.loadBlockchain(wp.address);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('Error during background initialization: $e');
+        }
+      }
+    });
   }
 
   // Add error handling for Flutter framework
@@ -64,6 +83,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider<WalletProvider>.value(value: wp),
         ChangeNotifierProvider<BlockchainProvider>.value(value: bp),
+        ChangeNotifierProvider<AddressbookProvider>(create: (_) => AddressbookProvider()),
       ],
       child: const MyApp(),
     ),

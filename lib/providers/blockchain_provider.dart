@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
@@ -35,24 +34,40 @@ class BlockchainProvider with ChangeNotifier {
   }
 
   Future<void> fetchPrice() async {
-    const url = Config.priceUrl;
-    final HttpClient httpClient = HttpClient();
-    httpClient.badCertificateCallback =
-        (X509Certificate cert, String host, int port) => true;
+    const url = Config.liveCoinWatchUrl;
     try {
-      final HttpClientRequest request = await httpClient.getUrl(Uri.parse(url));
-      final HttpClientResponse httpResponse = await request.close();
-      if (httpResponse.statusCode == 200) {
-        final String responseBody =
-            await httpResponse.transform(utf8.decoder).join();
-        final data = json.decode(responseBody);
-        _price = double.parse(data['data']['last']);
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': Config.liveCoinWatchApiKey,
+        },
+        body: json.encode({
+          'currency': 'USD',
+          'code': Config.btcsCode,
+          'meta': true,
+        }),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Price fetch request timed out after 30 seconds');
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        // LiveCoinWatch returns the price in 'rate' field
+        if (data['rate'] != null) {
+          _price = (data['rate'] as num).toDouble();
+        } else {
+          debugPrint('LiveCoinWatch: Price data not in response');
+        }
       } else {
-        throw Exception(
-            'Failed to load price, Status Code: ${httpResponse.statusCode}');
+        debugPrint('LiveCoinWatch failed with status: ${response.statusCode}');
       }
     } catch (e) {
-      //print('Error: $e');
+      // Keep previous price if fetch fails - only log in debug mode
+      debugPrint('Price fetch failed (keeping previous): $e');
     } finally {
       notifyListeners();
     }
@@ -66,7 +81,13 @@ class BlockchainProvider with ChangeNotifier {
         '${Config.explorerUrl}${Config.getAddressTxsEndpoint}/$address/$_startIndex/$_limit';
 
     try {
-      final response = await http.get(Uri.parse(url));
+      final response = await http.get(Uri.parse(url)).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw Exception('Transaction fetch request timed out after 15 seconds');
+        },
+      );
+
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         if (data.isEmpty) {
@@ -82,6 +103,8 @@ class BlockchainProvider with ChangeNotifier {
       } else {
         throw Exception('Failed to load transactions');
       }
+    } catch (e) {
+      debugPrint('Error fetching transactions: $e');
     } finally {
       await fetchPrice();
       _isLoading = false;
