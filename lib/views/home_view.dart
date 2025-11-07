@@ -44,47 +44,50 @@ class _HomeViewState extends State<HomeView> {
           SettingsView(),
         ],
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              const Color(0xFF1A1A1A),
-              const Color(0xFF0A0A0A),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                const Color(0xFF1A1A1A),
+                const Color(0xFF0A0A0A),
+              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            border: Border(
+              top: BorderSide(
+                color: const Color(0xFFC0C0C0).withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+          ),
+          child: BottomNavigationBar(
+            type: BottomNavigationBarType.fixed,
+            items: const <BottomNavigationBarItem>[
+              BottomNavigationBarItem(
+                icon: Icon(Icons.wallet, size: 28),
+                label: '',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.sync, size: 28),
+                label: '',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.settings, size: 28),
+                label: '',
+              ),
             ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            currentIndex: _selectedIndex,
+            onTap: _onItemTapped,
+            selectedItemColor: const Color(0xFFC0C0C0),
+            unselectedItemColor: Colors.white.withOpacity(0.5),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            showSelectedLabels: false,
+            showUnselectedLabels: false,
           ),
-          border: Border(
-            top: BorderSide(
-              color: const Color(0xFFC0C0C0).withOpacity(0.2),
-              width: 1,
-            ),
-          ),
-        ),
-        child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          items: const <BottomNavigationBarItem>[
-            BottomNavigationBarItem(
-              icon: Icon(Icons.wallet, size: 28),
-              label: '',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.sync, size: 28),
-              label: '',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.settings, size: 28),
-              label: '',
-            ),
-          ],
-          currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
-          selectedItemColor: const Color(0xFFC0C0C0),
-          unselectedItemColor: Colors.white.withOpacity(0.5),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          showSelectedLabels: false,
-          showUnselectedLabels: false,
         ),
       ),
     );

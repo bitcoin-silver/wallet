@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/views/home/scanner_view.dart';
+import 'package:bitcoinsilver_wallet/views/home/addressbook_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 
 class SendView extends StatefulWidget {
@@ -488,22 +489,57 @@ class _SendViewState extends State<SendView> {
                               borderRadius: BorderRadius.circular(8.0),
                               borderSide: const BorderSide(color: Colors.white24, width: 1.0),
                             ),
-                            suffixIcon: IconButton(
-                              icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
-                              onPressed: _isSending ? null : () async {
-                                final scannedAddress = await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const ScannerView(),
-                                  ),
-                                );
-                                if (scannedAddress != null) {
-                                  setState(() {
-                                    _addressController.text = scannedAddress;
-                                    _errorMessage = '';
-                                  });
-                                }
-                              },
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.contacts, color: Colors.cyanAccent),
+                                  onPressed: _isSending ? null : () async {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => AddressbookView(
+                                          selectionMode: true,
+                                          onAddressSelected: (address, username) {
+                                            setState(() {
+                                              _addressController.text = address;
+                                              _errorMessage = '';
+                                            });
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Selected @$username'),
+                                                backgroundColor: const Color(0xFF2A2A2A),
+                                                duration: const Duration(seconds: 2),
+                                                behavior: SnackBarBehavior.floating,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+                                  onPressed: _isSending ? null : () async {
+                                    final scannedAddress = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const ScannerView(),
+                                      ),
+                                    );
+                                    if (scannedAddress != null) {
+                                      setState(() {
+                                        _addressController.text = scannedAddress;
+                                        _errorMessage = '';
+                                      });
+                                    }
+                                  },
+                                ),
+                              ],
                             ),
                           ),
                           style: const TextStyle(color: Colors.white, fontFamily: 'monospace'),

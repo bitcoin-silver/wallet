@@ -67,7 +67,8 @@ class WalletProvider with ChangeNotifier {
       _privateKey = await _storage.read(key: 'key');
       if (_privateKey != null) {
         _address = _ws.loadAddressFromKey(_privateKey!);
-        await fetchUtxos(force: true);
+        // Don't fetch UTXOs here - let the caller decide when to fetch
+        // This makes wallet loading instant (no network calls)
       }
     } catch (e) {
       _lastError = 'Failed to load wallet: $e';
