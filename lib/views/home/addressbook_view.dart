@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -139,8 +138,8 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
             ],
           ),
           backgroundColor: success
-              ? Colors.green.withOpacity(0.9)
-              : Colors.orange.withOpacity(0.9),
+              ? Colors.green.withValues(alpha: 0.9)
+              : Colors.orange.withValues(alpha: 0.9),
           duration: const Duration(seconds: 4),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -187,7 +186,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                   ),
                 ],
               ),
-              backgroundColor: Colors.orange.withOpacity(0.9),
+              backgroundColor: Colors.orange.withValues(alpha: 0.9),
               duration: const Duration(seconds: 3),
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
@@ -231,7 +230,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                   ),
                 ],
               ),
-              backgroundColor: Colors.green.withOpacity(0.9),
+              backgroundColor: Colors.green.withValues(alpha: 0.9),
               duration: const Duration(seconds: 3),
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
@@ -265,7 +264,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                 ),
               ],
             ),
-            backgroundColor: Colors.orange.withOpacity(0.9),
+            backgroundColor: Colors.orange.withValues(alpha: 0.9),
             duration: const Duration(seconds: 4),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -317,8 +316,8 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                 ],
               ),
               backgroundColor: importResult['success']
-                  ? Colors.green.withOpacity(0.9)
-                  : Colors.orange.withOpacity(0.9),
+                  ? Colors.green.withValues(alpha: 0.9)
+                  : Colors.orange.withValues(alpha: 0.9),
               duration: const Duration(seconds: 4),
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
@@ -348,7 +347,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                 ),
               ],
             ),
-            backgroundColor: Colors.orange.withOpacity(0.9),
+            backgroundColor: Colors.orange.withValues(alpha: 0.9),
             duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -444,13 +443,13 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                       Icon(
                         Icons.contacts_outlined,
                         size: 64,
-                        color: Colors.white.withOpacity(0.3),
+                        color: Colors.white.withValues(alpha: 0.3),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'No favorites yet',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                           fontSize: 16,
                         ),
                       ),
@@ -507,16 +506,16 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: _searchByUsername ? 'Enter username' : 'Enter address',
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.05),
+                      fillColor: Colors.white.withValues(alpha: 0.05),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -606,7 +605,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
+                      color: Colors.white.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
@@ -653,7 +652,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                   Text(
                     'Choose a unique username for your wallet address',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 13,
                     ),
                   ),
@@ -663,16 +662,16 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: 'Enter username',
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.05),
+                      fillColor: Colors.white.withValues(alpha: 0.05),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -687,8 +686,8 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.cyanAccent,
                       foregroundColor: Colors.black,
-                      disabledBackgroundColor: Colors.cyanAccent.withOpacity(0.5),
-                      disabledForegroundColor: Colors.black.withOpacity(0.5),
+                      disabledBackgroundColor: Colors.cyanAccent.withValues(alpha: 0.5),
+                      disabledForegroundColor: Colors.black.withValues(alpha: 0.5),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -716,13 +715,13 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: _registrationSuccess
-                            ? Colors.green.withOpacity(0.1)
-                            : Colors.orange.withOpacity(0.1),
+                            ? Colors.green.withValues(alpha: 0.1)
+                            : Colors.orange.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: _registrationSuccess
-                              ? Colors.green.withOpacity(0.3)
-                              : Colors.orange.withOpacity(0.3),
+                              ? Colors.green.withValues(alpha: 0.3)
+                              : Colors.orange.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(
@@ -766,7 +765,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                   Text(
                     'Backup your favorite contacts to a .btcs file or restore from a previous backup',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 13,
                     ),
                   ),
@@ -774,9 +773,9 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.cyan.withOpacity(0.1),
+                      color: Colors.cyan.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.cyanAccent.withOpacity(0.3)),
+                      border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.3)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -802,7 +801,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                           '• Duplicates are automatically skipped\n'
                           '• Files are validated for security',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
+                            color: Colors.white.withValues(alpha: 0.7),
                             fontSize: 11,
                             height: 1.5,
                           ),
@@ -839,9 +838,9 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
+                color: Colors.blue.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -867,7 +866,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                     '• Your address will be publicly linked to your username\n'
                     '• Usernames are registered on a first-come basis',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 12,
                       height: 1.5,
                     ),
@@ -892,13 +891,13 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                   Icon(
                     Icons.star_border,
                     size: 64,
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                   ),
                   const SizedBox(height: 16),
                   Text(
                     'No favorites yet',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
@@ -907,7 +906,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                   Text(
                     'Search for users and add them to favorites',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.4),
+                      color: Colors.white.withValues(alpha: 0.4),
                       fontSize: 14,
                     ),
                     textAlign: TextAlign.center,
@@ -933,7 +932,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.cyanAccent.withOpacity(0.1),
+                  color: Colors.cyanAccent.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.person, color: Colors.cyanAccent),
@@ -960,7 +959,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                             child: Text(
                               entry.address,
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.6),
+                                color: Colors.white.withValues(alpha: 0.6),
                                 fontSize: 11,
                                 fontFamily: 'monospace',
                               ),
@@ -971,7 +970,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                           Icon(
                             Icons.copy,
                             size: 14,
-                            color: Colors.white.withOpacity(0.4),
+                            color: Colors.white.withValues(alpha: 0.4),
                           ),
                         ],
                       ),
@@ -1013,7 +1012,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.only(right: 20),
           decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.8),
+            color: Colors.red.withValues(alpha: 0.8),
             borderRadius: BorderRadius.circular(12),
           ),
           child: const Icon(Icons.delete, color: Colors.white),
@@ -1032,16 +1031,16 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
+                color: Colors.white.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
               ),
               child: Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.cyanAccent.withOpacity(0.1),
+                      color: Colors.cyanAccent.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.person, color: Colors.cyanAccent, size: 20),
@@ -1063,7 +1062,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                         Text(
                           '${entry.address.substring(0, 12)}...${entry.address.substring(entry.address.length - 8)}',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
+                            color: Colors.white.withValues(alpha: 0.5),
                             fontSize: 11,
                             fontFamily: 'monospace',
                           ),
@@ -1072,7 +1071,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
                     ),
                   ),
                   if (selectable)
-                    Icon(Icons.arrow_forward_ios, color: Colors.white.withOpacity(0.3), size: 16)
+                    Icon(Icons.arrow_forward_ios, color: Colors.white.withValues(alpha: 0.3), size: 16)
                   else
                     IconButton(
                       icon: const Icon(Icons.copy, size: 18),
@@ -1094,10 +1093,10 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isActive ? Colors.cyanAccent.withOpacity(0.2) : Colors.white.withOpacity(0.05),
+          color: isActive ? Colors.cyanAccent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isActive ? Colors.cyanAccent : Colors.white.withOpacity(0.2),
+            color: isActive ? Colors.cyanAccent : Colors.white.withValues(alpha: 0.2),
             width: isActive ? 2 : 1,
           ),
         ),
@@ -1105,7 +1104,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
           child: Text(
             text,
             style: TextStyle(
-              color: isActive ? Colors.cyanAccent : Colors.white.withOpacity(0.6),
+              color: isActive ? Colors.cyanAccent : Colors.white.withValues(alpha: 0.6),
               fontSize: 14,
               fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
             ),

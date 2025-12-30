@@ -124,7 +124,7 @@ class _BiometricGateState extends State<BiometricGate> with WidgetsBindingObserv
                 Icon(
                   Icons.fingerprint,
                   size: 80,
-                  color: const Color(0xFFC0C0C0).withOpacity(0.5),
+                  color: const Color(0xFFC0C0C0).withValues(alpha: 0.5),
                 ),
                 const SizedBox(height: 24),
                 const Text(

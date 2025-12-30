@@ -1,8 +1,10 @@
+
 plugins {
     id "com.android.application"
     id "kotlin-android"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
+    id "com.google.gms.google-services"
 }
 
 def keystoreProperties = new Properties()
@@ -12,7 +14,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "top.bitcoinsilver.wallet"
+    namespace = "top.bitcoinsilver.wallet2025"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -34,24 +36,25 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 21
-        versionName = "BTCS-W-2.1"
+        versionCode = 38
+        versionName = "BTCS-W-3.8"
     }
 
     signingConfigs {
         release {
             storeFile file("keystore.jks") // or use full path: file("D:/Tools/keystore.jks")
-            storePassword "your_pasw"
+            storePassword "Janos.1980"
             keyAlias "my-key"
-            keyPassword "your_pasw"
+            keyPassword "Janos.1980"
         }
     }
 
     buildTypes {
         release {
             signingConfig signingConfigs.release
-            shrinkResources false
-            minifyEnabled false
+            shrinkResources true
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 

@@ -12,6 +12,7 @@ class BlockchainProvider with ChangeNotifier {
   bool _hasMore = true;
   int _startIndex = 0;
   final int _limit = 50;
+  final int _maxTransactions = 200; // Server-side limit to reduce load
 
   String get timestamp => _timestamp;
   List get transactions => _transactions;
@@ -19,7 +20,9 @@ class BlockchainProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get hasMore => _hasMore;
 
-  Future<void> loadBlockchain(address) async {
+  Future<void> loadBlockchain(String? address) async {
+    if (address == null) return;
+
     final DateTime now = DateTime.now();
     final String formattedDate = DateFormat('HH:mm:ss').format(now);
 
@@ -78,7 +81,7 @@ class BlockchainProvider with ChangeNotifier {
     _isLoading = true;
 
     final url =
-        '${Config.explorerUrl}${Config.getAddressTxsEndpoint}/$address/$_startIndex/$_limit';
+        '${Config.explorerUrl}${Config.getAddressTxsEndpoint}?address=$address&limit=$_maxTransactions';
 
     try {
       final response = await http.get(Uri.parse(url)).timeout(
@@ -89,16 +92,32 @@ class BlockchainProvider with ChangeNotifier {
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        if (data.isEmpty) {
-          _hasMore = false;
+        final dynamic data = jsonDecode(response.body);
+
+        // New API returns an object with 'transactions' array
+        if (data is Map && data.containsKey('transactions')) {
+          final List<dynamic> txsList = data['transactions'] ?? [];
+
+          // Implement client-side pagination since API returns all transactions
+          List<dynamic> paginatedTxs = txsList.skip(_startIndex).take(_limit).toList();
+
+          if (paginatedTxs.isEmpty) {
+            _hasMore = false;
+          } else {
+            List<Map<String, dynamic>> castedData =
+                paginatedTxs.whereType<Map<String, dynamic>>().toList();
+            List<Map<String, dynamic>> transactions =
+                convertNewApiFormat(castedData);
+            _transactions.addAll(transactions);
+            _startIndex += _limit;
+
+            // Check if we've reached the end
+            if (_startIndex >= txsList.length) {
+              _hasMore = false;
+            }
+          }
         } else {
-          List<Map<String, dynamic>> castedData =
-              data.whereType<Map<String, dynamic>>().toList();
-          List<Map<String, dynamic>> transactions =
-              splitTransactions(castedData);
-          _transactions.addAll(transactions);
-          _startIndex += _limit;
+          _hasMore = false;
         }
       } else {
         throw Exception('Failed to load transactions');
@@ -112,6 +131,34 @@ class BlockchainProvider with ChangeNotifier {
     }
   }
 
+  // Convert new API format to UI-compatible format
+  List<Map<String, dynamic>> convertNewApiFormat(
+      List<Map<String, dynamic>> transactions) {
+    List<Map<String, dynamic>> convertedTxs = [];
+
+    for (var tx in transactions) {
+      // New API format: {txid, timestamp, amount, type: "received"/"sent"}
+      double amount = (tx['amount'] is int)
+          ? (tx['amount'] as int).toDouble()
+          : (tx['amount'] as num).toDouble();
+
+      // If type is "sent", make amount negative
+      if (tx['type'] == 'sent') {
+        amount = -amount;
+      }
+
+      convertedTxs.add({
+        'timestamp': tx['timestamp'],
+        'txid': tx['txid'],
+        'amount': amount,
+        'balance': 0, // New API doesn't provide balance per transaction
+      });
+    }
+
+    return convertedTxs;
+  }
+
+  // Legacy function for old API format (kept for compatibility)
   List<Map<String, dynamic>> splitTransactions(
       List<Map<String, dynamic>> transactions) {
     List<Map<String, dynamic>> splitTxs = [];

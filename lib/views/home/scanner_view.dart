@@ -65,9 +65,36 @@ class _ScannerViewState extends State<ScannerView> with WidgetsBindingObserver {
       // Haptic feedback for better UX
       HapticFeedback.mediumImpact();
 
-      // Return the scanned value
-      Navigator.pop(context, barcodes.first.rawValue);
+      // Parse Bitcoin URI format (e.g., bitcoinsilver:ADDRESS?label=xxx)
+      String scannedValue = barcodes.first.rawValue!;
+      String cleanAddress = _parseAddressFromUri(scannedValue);
+
+      // Return the parsed address
+      Navigator.pop(context, cleanAddress);
     }
+  }
+
+  /// Parse Bitcoin URI to extract just the address
+  /// Handles formats like: bitcoinsilver:BS1Q...?label=miner-3
+  String _parseAddressFromUri(String value) {
+    String address = value.trim();
+
+    // Remove bitcoinsilver: prefix if present (case-insensitive)
+    if (address.toLowerCase().startsWith('bitcoinsilver:')) {
+      address = address.substring('bitcoinsilver:'.length);
+    } else if (address.toLowerCase().startsWith('bitcoin:')) {
+      // Also support generic bitcoin: prefix
+      address = address.substring('bitcoin:'.length);
+    }
+
+    // Remove query parameters (anything after ?)
+    final queryIndex = address.indexOf('?');
+    if (queryIndex != -1) {
+      address = address.substring(0, queryIndex);
+    }
+
+    // Convert to lowercase (Bech32 standard for addresses like bs1q...)
+    return address.trim().toLowerCase();
   }
 
   @override
@@ -167,7 +194,7 @@ class _ScannerViewState extends State<ScannerView> with WidgetsBindingObserver {
         // Dark overlay with cutout
         ColorFiltered(
           colorFilter: ColorFilter.mode(
-            Colors.black.withOpacity(0.5),
+            Colors.black.withValues(alpha: 0.5),
             BlendMode.srcOut,
           ),
           child: Stack(
@@ -235,13 +262,13 @@ class _ScannerViewState extends State<ScannerView> with WidgetsBindingObserver {
                         gradient: LinearGradient(
                           colors: [
                             Colors.transparent,
-                            Colors.white.withOpacity(0.8),
+                            Colors.white.withValues(alpha: 0.8),
                             Colors.transparent,
                           ],
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.white.withOpacity(0.5),
+                            color: Colors.white.withValues(alpha: 0.5),
                             blurRadius: 10,
                             spreadRadius: 2,
                           ),

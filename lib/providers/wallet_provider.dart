@@ -1,17 +1,23 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:bitcoinsilver_wallet/config.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bitcoinsilver_wallet/services/wallet_service.dart';
+import 'package:bitcoinsilver_wallet/services/notification_service.dart';
+
+// Backend URL - HTTPS endpoint
+const String backendUrl = 'https://btcs-vps13.duckdns.org';
 
 class WalletProvider with ChangeNotifier {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   final WalletService _ws = WalletService();
+  late NotificationService _notificationService;
+  Function(String address)? _onTransactionTapped;
 
   String? _privateKey;
   String? _address;
   double? _balance = 0.0;
   double? _pendingBalance = 0.0;
-  double? _lastKnownBalance; // Store balance before sending transaction
   List _utxos = [];
   bool _isLoading = false;
   String? _lastError;
@@ -57,7 +63,48 @@ class WalletProvider with ChangeNotifier {
       _pendingTransactions.values.toList()
         ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-  WalletProvider();
+  WalletProvider() {
+    _notificationService = NotificationService(
+      backendUrl: backendUrl,
+      onTransactionReceived: _handleTransactionReceived,
+      onNotificationTapped: _handleNotificationTapped,
+    );
+  }
+
+  /// Handle confirmed transaction notification - refresh balance
+  void _handleTransactionReceived(String txid, String amount, String address) {
+    debugPrint('✅ Transaction confirmed: $amount BTCS - Refreshing balance');
+    // Safety check: only process if wallet is loaded
+    if (_address == null) {
+      debugPrint('⚠️ Wallet not loaded yet, skipping transaction notification');
+      return;
+    }
+    // Refresh UTXOs to update balance (called only for confirmed transactions)
+    fetchUtxos(force: true);
+    notifyListeners();
+  }
+
+  /// Handle notification tap - refresh balance and transactions
+  void _handleNotificationTapped(String txid) {
+    debugPrint('👆 Notification tapped: $txid - Refreshing balance and transactions');
+    // Safety check: only process if wallet is loaded
+    if (_address == null) {
+      debugPrint('⚠️ Wallet not loaded yet, skipping notification tap');
+      return;
+    }
+    // Refresh balance when user taps notification
+    fetchUtxos(force: true);
+    // Trigger transaction refresh if callback is set
+    if (_onTransactionTapped != null) {
+      _onTransactionTapped!(_address!);
+    }
+    notifyListeners();
+  }
+
+  /// Set callback for transaction refresh (called from main.dart)
+  void setTransactionRefreshCallback(Function(String address) callback) {
+    _onTransactionTapped = callback;
+  }
 
   Future<void> loadWallet() async {
     try {
@@ -67,6 +114,16 @@ class WalletProvider with ChangeNotifier {
       _privateKey = await _storage.read(key: 'key');
       if (_privateKey != null) {
         _address = _ws.loadAddressFromKey(_privateKey!);
+
+        // Initialize push notifications in the background (only if enabled)
+        if (_address != null) {
+          final prefs = await SharedPreferences.getInstance();
+          final notificationsEnabled = prefs.getBool('notifications_enabled') ?? false;
+          if (notificationsEnabled) {
+            _initializeNotifications(_address!);
+          }
+        }
+
         // Don't fetch UTXOs here - let the caller decide when to fetch
         // This makes wallet loading instant (no network calls)
       }
@@ -75,6 +132,40 @@ class WalletProvider with ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// Initialize push notifications for the wallet address
+  Future<void> _initializeNotifications(String address) async {
+    try {
+      await _notificationService.initialize(address);
+      debugPrint('✓ Push notifications initialized for address');
+    } catch (e) {
+      debugPrint('✗ Failed to initialize push notifications: $e');
+      // Don't fail the wallet loading if notifications fail
+    }
+  }
+
+  /// Enable push notifications (called from settings)
+  Future<void> enableNotifications(String address) async {
+    try {
+      await _notificationService.initialize(address);
+      debugPrint('✓ Push notifications enabled');
+    } catch (e) {
+      debugPrint('✗ Failed to enable push notifications: $e');
+      rethrow;
+    }
+  }
+
+  /// Disable push notifications (called from settings)
+  Future<void> disableNotifications(String address) async {
+    try {
+      await _notificationService.unregisterDevice(address);
+      await _notificationService.deleteToken();
+      debugPrint('✓ Push notifications disabled');
+    } catch (e) {
+      debugPrint('✗ Failed to disable push notifications: $e');
+      rethrow;
     }
   }
 
@@ -90,7 +181,6 @@ class WalletProvider with ChangeNotifier {
     _address = null;
     _balance = 0.0;
     _pendingBalance = 0.0;
-    _lastKnownBalance = null;
     _utxos = [];
     _pendingTxids.clear();
     _pendingTimestamps.clear();
@@ -439,9 +529,6 @@ class WalletProvider with ChangeNotifier {
 
     _isCurrentlySending = true;
     _lastSendAttempt = DateTime.now();
-
-    // Store balance before sending
-    _lastKnownBalance = _balance;
 
     // Create transaction
     final createResult = await createTransaction(

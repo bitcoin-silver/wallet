@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "737997370969",
+    "project_id": "btcs-wallet-notifications",
+    "storage_bucket": "btcs-wallet-notifications.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:737997370969:android:7f70303dda9500ceff2348",
+        "android_client_info": {
+          "package_name": "top.bitcoinsilver.wallet2025"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCrsOICi8UbJfS6rRy9ipyuIm5bPF-9_58"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

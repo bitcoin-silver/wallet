@@ -30,12 +30,14 @@ class SetupView extends StatelessWidget {
         ));
       }
 
+      if (!context.mounted) return;
       final wp = Provider.of<WalletProvider>(context, listen: false);
       await wp.saveWallet(address, privateKey);
 
       // Fetch UTXOs before loading blockchain
       await wp.fetchUtxos(force: true);
 
+      if (!context.mounted) return;
       final bp = Provider.of<BlockchainProvider>(context, listen: false);
       await bp.loadBlockchain(address);
 
@@ -62,6 +64,7 @@ class SetupView extends StatelessWidget {
     final types = await _biometricService.getAvailableBiometrics();
     final typeName = _biometricService.getBiometricTypeName(types);
 
+    if (!context.mounted) return;
     final enable = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -206,9 +209,9 @@ class SetupView extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.3),
+                        color: Colors.black.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.cyanAccent.withOpacity(0.3)),
+                        border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.3)),
                       ),
                       child: SelectableText(
                         address,
@@ -231,9 +234,9 @@ class SetupView extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.1),
+                        color: Colors.orange.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                       ),
                       child: SelectableText(
                         privateKey,
@@ -335,7 +338,7 @@ class SetupView extends StatelessWidget {
                     ),
                     child: IntrinsicHeight(
                       child: Container(
-                        color: Colors.black.withOpacity(0.5),
+                        color: Colors.black.withValues(alpha: 0.5),
                         padding: const EdgeInsets.all(16.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.center,

@@ -166,7 +166,7 @@ class _ReceiveViewState extends State<ReceiveView>
               ),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
               ),
             ),
             child: Form(
@@ -180,7 +180,7 @@ class _ReceiveViewState extends State<ReceiveView>
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.purple.withOpacity(0.2),
+                          color: Colors.purple.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(
@@ -212,14 +212,14 @@ class _ReceiveViewState extends State<ReceiveView>
                       labelStyle: TextStyle(color: Colors.grey.shade400),
                       prefixIcon: Icon(Icons.monetization_on, color: Colors.purple.shade400),
                       filled: true,
-                      fillColor: Colors.black.withOpacity(0.3),
+                      fillColor: Colors.black.withValues(alpha: 0.3),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -248,14 +248,14 @@ class _ReceiveViewState extends State<ReceiveView>
                       labelStyle: TextStyle(color: Colors.grey.shade400),
                       prefixIcon: Icon(Icons.message, color: Colors.purple.shade400),
                       filled: true,
-                      fillColor: Colors.black.withOpacity(0.3),
+                      fillColor: Colors.black.withValues(alpha: 0.3),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -287,7 +287,7 @@ class _ReceiveViewState extends State<ReceiveView>
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                              side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
                             ),
                           ),
                           child: const Text(
@@ -344,6 +344,7 @@ class _ReceiveViewState extends State<ReceiveView>
       });
 
       // Show success message
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -392,7 +393,7 @@ class _ReceiveViewState extends State<ReceiveView>
           leading: Container(
             margin: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: IconButton(
@@ -424,7 +425,7 @@ class _ReceiveViewState extends State<ReceiveView>
               end: Alignment.bottomCenter,
               colors: [
                 Colors.black,
-                Colors.grey.shade900.withOpacity(0.8),
+                Colors.grey.shade900.withValues(alpha: 0.8),
                 Colors.black,
               ],
             ),
@@ -455,13 +456,13 @@ class _ReceiveViewState extends State<ReceiveView>
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       colors: [
-                                        Colors.blue.shade400.withOpacity(0.2),
-                                        Colors.purple.shade400.withOpacity(0.2),
+                                        Colors.blue.shade400.withValues(alpha: 0.2),
+                                        Colors.purple.shade400.withValues(alpha: 0.2),
                                       ],
                                     ),
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: Colors.white.withOpacity(0.2),
+                                      color: Colors.white.withValues(alpha: 0.2),
                                       width: 2,
                                     ),
                                   ),
@@ -490,10 +491,10 @@ class _ReceiveViewState extends State<ReceiveView>
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.2),
+                              color: Colors.green.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: Colors.green.withOpacity(0.3),
+                                color: Colors.green.withValues(alpha: 0.3),
                               ),
                             ),
                             child: const Row(
@@ -530,10 +531,10 @@ class _ReceiveViewState extends State<ReceiveView>
                           margin: const EdgeInsets.only(bottom: 16),
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.purple.withOpacity(0.1),
+                            color: Colors.purple.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.purple.withOpacity(0.3),
+                              color: Colors.purple.withValues(alpha: 0.3),
                             ),
                           ),
                           child: Row(
@@ -601,13 +602,13 @@ class _ReceiveViewState extends State<ReceiveView>
                             borderRadius: BorderRadius.circular(24),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.blue.withOpacity(0.3),
+                                color: Colors.blue.withValues(alpha: 0.3),
                                 blurRadius: 30,
                                 spreadRadius: 0,
                                 offset: const Offset(0, 10),
                               ),
                               BoxShadow(
-                                color: Colors.purple.withOpacity(0.2),
+                                color: Colors.purple.withValues(alpha: 0.2),
                                 blurRadius: 20,
                                 spreadRadius: 0,
                                 offset: const Offset(0, -5),
@@ -636,7 +637,7 @@ class _ReceiveViewState extends State<ReceiveView>
                                       color: Colors.white,
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
-                                        color: Colors.black.withOpacity(0.1),
+                                        color: Colors.black.withValues(alpha: 0.1),
                                         width: 2,
                                       ),
                                     ),
@@ -671,13 +672,13 @@ class _ReceiveViewState extends State<ReceiveView>
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                Colors.white.withOpacity(0.05),
-                                Colors.white.withOpacity(0.02),
+                                Colors.white.withValues(alpha: 0.05),
+                                Colors.white.withValues(alpha: 0.02),
                               ],
                             ),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.1),
+                              color: Colors.white.withValues(alpha: 0.1),
                             ),
                           ),
                           child: Column(
@@ -705,12 +706,12 @@ class _ReceiveViewState extends State<ReceiveView>
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.3),
+                                  color: Colors.black.withValues(alpha: 0.3),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: _isAddressCopied
-                                        ? Colors.green.withOpacity(0.5)
-                                        : Colors.white.withOpacity(0.1),
+                                        ? Colors.green.withValues(alpha: 0.5)
+                                        : Colors.white.withValues(alpha: 0.1),
                                   ),
                                 ),
                                 child: Row(
@@ -798,10 +799,10 @@ class _ReceiveViewState extends State<ReceiveView>
                         child: Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.05),
+                            color: Colors.blue.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.blue.withOpacity(0.1),
+                              color: Colors.blue.withValues(alpha: 0.1),
                             ),
                           ),
                           child: Row(
@@ -843,7 +844,7 @@ class _ReceiveViewState extends State<ReceiveView>
                       ),
                     ] else ...[
                       // Empty state
-                      Container(
+                      SizedBox(
                         height: MediaQuery.of(context).size.height * 0.5,
                         child: Center(
                           child: Column(
@@ -904,7 +905,7 @@ class _ReceiveViewState extends State<ReceiveView>
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: gradient.first.withOpacity(0.3),
+              color: gradient.first.withValues(alpha: 0.3),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
