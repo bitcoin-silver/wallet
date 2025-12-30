@@ -3,19 +3,45 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/addressbook_provider.dart';
+import 'package:bitcoinsilver_wallet/providers/chat_provider.dart';
 import 'package:bitcoinsilver_wallet/views/setup_view.dart';
 import 'package:bitcoinsilver_wallet/views/biometric_gate.dart';
+import 'package:bitcoinsilver_wallet/views/chat/chat_view.dart';
 import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
+import 'package:bitcoinsilver_wallet/services/chat_notification_service.dart';
+import 'package:bitcoinsilver_wallet/services/migration_service.dart';
+
+// Backend URL - HTTPS endpoint
+const String backendUrl = 'https://btcs-vps13.duckdns.org';
+
+// Global navigator key for navigation from notifications
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Initialize Firebase
+  try {
+    await Firebase.initializeApp();
+    if (kDebugMode) {
+      debugPrint('✓ Firebase initialized');
+    }
+  } catch (e) {
+    if (kDebugMode) {
+      debugPrint('✗ Firebase initialization failed: $e');
+    }
+  }
+
   // Initialize RPC credentials in secure storage
   final rpcConfig = RpcConfigService();
   await rpcConfig.initializeRpcCredentials();
+
+  // Check app version and run migrations if needed
+  await MigrationService.checkAndMigrate();
 
   // Enable edge-to-edge display for Android 15+ compatibility
   SystemChrome.setEnabledSystemUIMode(
@@ -40,6 +66,9 @@ void main() async {
   // Initialize providers with error handling
   final wp = WalletProvider();
   final bp = BlockchainProvider();
+
+  // Link providers - so notification taps refresh transactions
+  wp.setTransactionRefreshCallback((address) => bp.loadBlockchain(address));
 
   // Load wallet synchronously (fast, only reads from secure storage)
   try {
@@ -78,12 +107,24 @@ void main() async {
     };
   }
 
+  // Setup chat notification tap handler
+  final chatNotificationService = ChatNotificationService();
+  chatNotificationService.onNotificationTapped = () {
+    // Navigate to chat when notification is tapped
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (context) => const ChatView(),
+      ),
+    );
+  };
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider<WalletProvider>.value(value: wp),
         ChangeNotifierProvider<BlockchainProvider>.value(value: bp),
         ChangeNotifierProvider<AddressbookProvider>(create: (_) => AddressbookProvider()),
+        ChangeNotifierProvider<ChatProvider>(create: (_) => ChatProvider()),
       ],
       child: const MyApp(),
     ),
@@ -100,6 +141,7 @@ class MyApp extends StatelessWidget {
         final initialRoute = wp.privateKey != null ? '/home' : '/setup';
 
     return MaterialApp(
+      navigatorKey: navigatorKey, // For navigation from notifications
       title: 'Bitcoin Silver Wallet',
       debugShowCheckedModeBanner: false,
 
@@ -112,11 +154,9 @@ class MyApp extends StatelessWidget {
           primary: const Color(0xFFC0C0C0), // Silver
           secondary: const Color(0xFF00E5FF), // Cyan accent
           surface: const Color(0xFF1A1A1A),
-          background: const Color(0xFF0A0A0A),
           onPrimary: Colors.black,
           onSecondary: Colors.black,
           onSurface: Colors.white,
-          onBackground: Colors.white,
         ),
         appBarTheme: const AppBarTheme(
           centerTitle: true,
@@ -137,7 +177,7 @@ class MyApp extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
-              color: const Color(0xFFC0C0C0).withOpacity(0.1),
+              color: const Color(0xFFC0C0C0).withValues(alpha: 0.1),
             ),
           ),
         ),
@@ -151,11 +191,9 @@ class MyApp extends StatelessWidget {
           primary: const Color(0xFFC0C0C0), // Silver
           secondary: const Color(0xFF00E5FF), // Cyan accent
           surface: const Color(0xFF1A1A1A),
-          background: const Color(0xFF0A0A0A),
           onPrimary: Colors.black,
           onSecondary: Colors.black,
           onSurface: Colors.white,
-          onBackground: Colors.white,
         ),
         appBarTheme: const AppBarTheme(
           centerTitle: true,
@@ -176,7 +214,7 @@ class MyApp extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
-              color: const Color(0xFFC0C0C0).withOpacity(0.1),
+              color: const Color(0xFFC0C0C0).withValues(alpha: 0.1),
             ),
           ),
         ),

@@ -35,8 +35,8 @@ class AboutView extends StatelessWidget {
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
                       colors: [
-                        Colors.cyanAccent.withOpacity(0.3),
-                        Colors.cyanAccent.withOpacity(0.1),
+                        Colors.cyanAccent.withValues(alpha: 0.3),
+                        Colors.cyanAccent.withValues(alpha: 0.1),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -69,11 +69,11 @@ class AboutView extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.cyanAccent.withOpacity(0.2),
+                    color: Colors.cyanAccent.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'Version 2.5',
+                    'Version 3.8',
                     style: TextStyle(color: Colors.cyanAccent, fontSize: 14),
                   ),
                 ),
@@ -86,7 +86,7 @@ class AboutView extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Colors.cyanAccent.withOpacity(0.1),
+                      Colors.cyanAccent.withValues(alpha: 0.1),
                       Colors.transparent,
                     ],
                     begin: Alignment.topLeft,
@@ -94,7 +94,7 @@ class AboutView extends StatelessWidget {
                   ),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Colors.cyanAccent.withOpacity(0.3),
+                    color: Colors.cyanAccent.withValues(alpha: 0.3),
                     width: 1,
                   ),
                 ),
@@ -137,10 +137,10 @@ class AboutView extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                   ),
                 ),
                 child: const Text(
@@ -160,10 +160,10 @@ class AboutView extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                   ),
                 ),
                 child: Column(
@@ -247,8 +247,8 @@ class AboutView extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Colors.cyanAccent.withOpacity(0.2),
-                      Colors.cyanAccent.withOpacity(0.05),
+                      Colors.cyanAccent.withValues(alpha: 0.2),
+                      Colors.cyanAccent.withValues(alpha: 0.05),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -295,7 +295,7 @@ class AboutView extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.cyanAccent.withOpacity(0.2),
+              color: Colors.cyanAccent.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(

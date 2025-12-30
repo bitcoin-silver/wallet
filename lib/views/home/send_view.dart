@@ -19,7 +19,7 @@ class _SendViewState extends State<SendView> {
   bool _isChecked = false;
   String _errorMessage = '';
   bool _isSending = false;
-  double _estimatedFee = 0.00001; // Default fee estimate
+  final double _estimatedFee = 0.00001; // Default fee estimate
 
   @override
   void initState() {
@@ -176,17 +176,20 @@ class _SendViewState extends State<SendView> {
         }
 
         // Clear form
-        setState(() {
-          _addressController.clear();
-          _amountController.clear();
-          _isChecked = false;
-          _errorMessage = '';
-        });
+        if (mounted) {
+          setState(() {
+            _addressController.clear();
+            _amountController.clear();
+            _isChecked = false;
+            _errorMessage = '';
+          });
+        }
 
-        // Refresh balance after a delay
-        Future.delayed(const Duration(seconds: 3), () {
+        // Refresh balance after a delay - capture provider reference before delay
+        final provider = walletProvider;
+        Future.delayed(const Duration(seconds: 3), () async {
           if (mounted) {
-            _refreshBalance();
+            await provider.fetchUtxos(force: true);
           }
         });
 
@@ -219,42 +222,54 @@ class _SendViewState extends State<SendView> {
               }
 
               // Clear form
-              setState(() {
-                _addressController.clear();
-                _amountController.clear();
-                _isChecked = false;
-                _errorMessage = '';
-              });
+              if (mounted) {
+                setState(() {
+                  _addressController.clear();
+                  _amountController.clear();
+                  _isChecked = false;
+                  _errorMessage = '';
+                });
+              }
 
               return;
             } else {
               // Retry failed
-              setState(() {
-                _errorMessage = retryResult['message'] ?? 'Transaction failed';
-              });
+              if (mounted) {
+                setState(() {
+                  _errorMessage = retryResult['message'] ?? 'Transaction failed';
+                });
+              }
             }
           } else {
             // User declined to retry
-            setState(() {
-              _errorMessage = 'Transaction cancelled. The network requires a higher fee.';
-            });
+            if (mounted) {
+              setState(() {
+                _errorMessage = 'Transaction cancelled. The network requires a higher fee.';
+              });
+            }
           }
         }
       } else {
         // Other error
-        setState(() {
-          _errorMessage = result['message'] ?? 'Transaction failed';
-        });
+        if (mounted) {
+          setState(() {
+            _errorMessage = result['message'] ?? 'Transaction failed';
+          });
+        }
       }
 
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Error: ${e.toString()}';
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Error: ${e.toString()}';
+        });
+      }
     } finally {
-      setState(() {
-        _isSending = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
     }
   }
 
@@ -416,7 +431,7 @@ class _SendViewState extends State<SendView> {
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
+                            color: Colors.white.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: Colors.white24),
                           ),
@@ -441,7 +456,7 @@ class _SendViewState extends State<SendView> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: Colors.orange.withOpacity(0.2),
+                                    color: Colors.orange.withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Row(
@@ -595,9 +610,9 @@ class _SendViewState extends State<SendView> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.1),
+                              color: Colors.red.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.red.withOpacity(0.3)),
+                              border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                             ),
                             child: Row(
                               children: [

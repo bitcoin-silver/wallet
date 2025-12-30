@@ -468,4 +468,3 @@ If you discover a security vulnerability, please email [security contact] instea
 - GDPR: No personal data collected or transmitted
 - Data Privacy: All sensitive data encrypted at rest
 - Open Source: Full transparency of security implementation
-

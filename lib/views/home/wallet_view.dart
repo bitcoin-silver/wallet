@@ -7,9 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
+import 'package:bitcoinsilver_wallet/providers/chat_provider.dart';
 import 'package:bitcoinsilver_wallet/views/home/receive_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/send_view.dart';
-import 'package:bitcoinsilver_wallet/views/home/addressbook_view.dart';
+// import 'package:bitcoinsilver_wallet/views/home/addressbook_view.dart';
+// import 'package:bitcoinsilver_wallet/views/chat/chat_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 import 'package:bitcoinsilver_wallet/modals/transaction_modal.dart';
 import 'package:bitcoinsilver_wallet/views/home/transactions_view.dart';
@@ -96,7 +98,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
-            color: Colors.cyanAccent.withOpacity(0.3),
+            color: Colors.cyanAccent.withValues(alpha: 0.3),
             width: 1,
           ),
         ),
@@ -137,7 +139,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
             side: BorderSide(
-              color: Colors.green.withOpacity(0.3),
+              color: Colors.green.withValues(alpha: 0.3),
               width: 1,
             ),
           ),
@@ -163,34 +165,51 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
     );
   }
 
-  List<FlSpot> _generateDataPoints(List<dynamic> transactions) {
-    if (transactions.isEmpty) {
+  List<FlSpot> _generateDataPoints(List<dynamic> transactions, double? currentBalance) {
+    if (transactions.isEmpty || currentBalance == null) {
       // Show a flat line at current balance or 0
+      final balanceValue = currentBalance ?? 0.0;
       return [
-        const FlSpot(0, 0),
-        const FlSpot(1, 0),
+        FlSpot(0, balanceValue),
+        FlSpot(1, balanceValue),
       ];
     }
 
-    // Create spots from transactions (reversed to show oldest first)
-    final reversedTransactions = transactions.reversed.toList();
+    // Calculate the starting balance by working backwards from current balance
+    // Transactions are ordered newest to oldest
+    double startingBalance = currentBalance;
+    for (var tx in transactions) {
+      final amount = tx['amount']?.toDouble() ?? 0.0;
+      startingBalance -= amount;
+    }
+
+    // Ensure starting balance is not negative for display
+    if (startingBalance < 0) startingBalance = 0.0;
+
+    // Now build the balance history going forwards (oldest to newest)
     final spots = <FlSpot>[];
+    final reversedTransactions = transactions.reversed.toList();
 
-    // Start from 0 if we have transactions
-    spots.add(const FlSpot(0, 0));
+    // Start with the calculated starting balance
+    double balance = startingBalance;
+    spots.add(FlSpot(0, balance));
 
-    // Add each transaction as a point
+    // Add each transaction's effect (oldest to newest)
     for (int i = 0; i < reversedTransactions.length; i++) {
       final tx = reversedTransactions[i];
-      final balance = tx['balance']?.toDouble() ?? 0.0;
-      spots.add(FlSpot(i + 1.0, balance));
+      final amount = tx['amount']?.toDouble() ?? 0.0;
+      balance += amount;
+
+      // Ensure balance never goes below 0 for display purposes
+      final displayBalance = balance < 0 ? 0.0 : balance;
+      spots.add(FlSpot((i + 1).toDouble(), displayBalance));
     }
 
     return spots;
   }
 
   LineChartData _buildChartData(List<dynamic> transactions, double? currentBalance) {
-    final spots = _generateDataPoints(transactions);
+    final spots = _generateDataPoints(transactions, currentBalance);
 
     // Calculate bounds
     double maxY = currentBalance ?? 1.0;
@@ -201,7 +220,8 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
     maxY = maxY * 1.1; // Add 10% padding
     if (maxY == 0) maxY = 1; // Ensure we have some height
 
-    final maxX = spots.length > 1 ? spots.length - 1.0 : 1.0;
+    // maxX is based on the last spot's x value
+    final maxX = spots.isNotEmpty ? spots.last.x : 1.0;
 
     return LineChartData(
       backgroundColor: Colors.transparent,
@@ -225,14 +245,18 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
           }
         },
         touchTooltipData: LineTouchTooltipData(
-          getTooltipColor: (spot) => Colors.black87,
-          tooltipPadding: const EdgeInsets.all(8),
-          tooltipMargin: 8,
+          getTooltipColor: (spot) => const Color(0xFF1A1A1A).withValues(alpha: 0.95),
+          tooltipPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          tooltipMargin: 10,
+          tooltipBorder: BorderSide(
+            color: Colors.cyanAccent.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
           getTooltipItems: (touchedSpots) {
             return touchedSpots.map((LineBarSpot touchedSpot) {
               if (touchedSpot.x == 0) {
                 return LineTooltipItem(
-                  'Starting Point\n',
+                  'Starting Balance\n',
                   const TextStyle(
                     color: Colors.white70,
                     fontSize: 12,
@@ -240,7 +264,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                   ),
                   children: [
                     TextSpan(
-                      text: '0.00 BTCS',
+                      text: '${touchedSpot.y.toStringAsFixed(4)} BTCS',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -251,12 +275,18 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                 );
               }
 
-              final txIndex = touchedSpot.x.toInt() - 1;
-              if (txIndex >= 0 && txIndex < transactions.length) {
-                final reversedTx = transactions.reversed.toList();
-                final tx = reversedTx[txIndex];
+              // x=1 corresponds to oldest transaction, x=transactions.length to newest
+              // Calculate which transaction this corresponds to
+              final reversedTxIndex = touchedSpot.x.toInt() - 1;
+              if (reversedTxIndex >= 0 && reversedTxIndex < transactions.length) {
+                // Map back to original transaction index (newest first)
+                final txIndex = transactions.length - 1 - reversedTxIndex;
+                final tx = transactions[txIndex];
+                final amount = tx['amount']?.toDouble() ?? 0.0;
+                final isReceived = amount > 0;
+
                 return LineTooltipItem(
-                  'Transaction ${txIndex + 1}\n',
+                  '${isReceived ? 'Received' : 'Sent'}\n',
                   const TextStyle(
                     color: Colors.white70,
                     fontSize: 12,
@@ -264,7 +294,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                   ),
                   children: [
                     TextSpan(
-                      text: '${touchedSpot.y.toStringAsFixed(4)} BTCS',
+                      text: 'Balance: ${touchedSpot.y.toStringAsFixed(4)} BTCS',
                       style: const TextStyle(
                         color: Colors.cyanAccent,
                         fontSize: 14,
@@ -290,17 +320,17 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
           return spotIndexes.map((index) {
             return TouchedSpotIndicatorData(
               FlLine(
-                color: Colors.cyanAccent.withOpacity(0.5),
-                strokeWidth: 2,
-                dashArray: [5, 5],
+                color: Colors.cyanAccent.withValues(alpha: 0.6),
+                strokeWidth: 3,
+                dashArray: [8, 4],
               ),
               FlDotData(
                 show: true,
                 getDotPainter: (spot, percent, bar, index) {
                   return FlDotCirclePainter(
-                    radius: 5,
+                    radius: 7,
                     color: Colors.cyanAccent,
-                    strokeWidth: 2,
+                    strokeWidth: 3,
                     strokeColor: Colors.white,
                   );
                 },
@@ -317,7 +347,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
         horizontalInterval: maxY / 5,
         getDrawingHorizontalLine: (value) {
           return FlLine(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             strokeWidth: 0.5,
           );
         },
@@ -380,27 +410,59 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
       minY: 0,
       maxY: maxY,
 
-      // Line bars
+      // Line bars with glow effect (multiple layers)
       lineBarsData: [
+        // Outer glow layer
         LineChartBarData(
           spots: spots,
           isCurved: true,
           curveSmoothness: 0.3,
           preventCurveOverShooting: true,
-          color: Colors.cyanAccent,
-          barWidth: 2.5,
+          color: Colors.cyanAccent.withValues(alpha: 0.3),
+          barWidth: 8,
+          isStrokeCapRound: true,
+          dotData: FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
+        // Middle glow layer
+        LineChartBarData(
+          spots: spots,
+          isCurved: true,
+          curveSmoothness: 0.3,
+          preventCurveOverShooting: true,
+          color: Colors.cyanAccent.withValues(alpha: 0.5),
+          barWidth: 4,
+          isStrokeCapRound: true,
+          dotData: FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
+        // Main line with enhanced gradient
+        LineChartBarData(
+          spots: spots,
+          isCurved: true,
+          curveSmoothness: 0.3,
+          preventCurveOverShooting: true,
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF00E5FF),
+              Colors.cyanAccent,
+              const Color(0xFFC0C0C0),
+            ],
+            stops: const [0.0, 0.5, 1.0],
+          ),
+          barWidth: 3,
           isStrokeCapRound: true,
 
-          // Don't show dots by default, only on touch
+          // Enhanced dots with glow
           dotData: FlDotData(
             show: true,
             getDotPainter: (spot, percent, bar, index) {
               // Only show dot if it's touched or it's the last point
               if (index == _touchedIndex || index == spots.length - 1) {
                 return FlDotCirclePainter(
-                  radius: 4,
+                  radius: 6,
                   color: Colors.cyanAccent,
-                  strokeWidth: 2,
+                  strokeWidth: 3,
                   strokeColor: Colors.white,
                 );
               }
@@ -411,14 +473,18 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
             },
           ),
 
-          // Gradient below line
+          // Enhanced gradient below line
           belowBarData: BarAreaData(
             show: true,
             gradient: LinearGradient(
               colors: [
-                Colors.cyanAccent.withOpacity(0.3),
-                Colors.cyanAccent.withOpacity(0.05),
+                const Color(0xFF00E5FF).withValues(alpha: 0.4),
+                Colors.cyanAccent.withValues(alpha: 0.25),
+                const Color(0xFF00E5FF).withValues(alpha: 0.1),
+                Colors.cyanAccent.withValues(alpha: 0.05),
+                Colors.transparent,
               ],
+              stops: const [0.0, 0.3, 0.6, 0.8, 1.0],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -443,9 +509,6 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
     final bool hasPending = walletProvider.hasPendingTransactions;
 
     final double price = blockchainProvider.price;
-    final String balanceInUSD = displayBalance != null
-        ? '\$${(displayBalance * price).toStringAsFixed(2)}'
-        : '\$0.00';
 
     return Scaffold(
       body: Stack(
@@ -513,69 +576,108 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                         ),
                         ),
                       ] else ...[
-                        // Balance Display
-                        Column(
-                          children: [
-                            const SizedBox(height: 20),
+                        // Balance Display with fade-in animation
+                        AnimatedOpacity(
+                          opacity: displayBalance != null ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 500),
+                          curve: Curves.easeOut,
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 20),
 
-                            // USD Value
-                            Text(
-                              balanceInUSD,
-                              style: TextStyle(
-                                color: hasPending ? Colors.orange.withOpacity(0.8) : Colors.white54,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w500,
+                              // USD Value with enhanced styling
+                              TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0.0, end: displayBalance ?? 0.0),
+                                duration: const Duration(milliseconds: 800),
+                                curve: Curves.easeOut,
+                                builder: (context, value, child) {
+                                  final usdValue = value * price;
+                                  return Text(
+                                    '\$${usdValue.toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      color: hasPending
+                                          ? Colors.orange.withValues(alpha: 0.8)
+                                          : Colors.white60,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  );
+                                },
                               ),
-                            ),
 
-                            const SizedBox(height: 8),
+                              const SizedBox(height: 12),
 
-                            // BTCS Balance with pending indicator
-                            Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                                  textBaseline: TextBaseline.alphabetic,
-                                  children: [
-                                    if (hasPending)
-                                      AnimatedBuilder(
-                                        animation: _pendingAnimation,
-                                        builder: (context, child) {
-                                          return Icon(
-                                            Icons.access_time,
-                                            color: Colors.orange.withOpacity(_pendingAnimation.value),
-                                            size: 20,
-                                          );
-                                        },
+                              // BTCS Balance with pending indicator and animation
+                              TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0.0, end: displayBalance ?? 0.0),
+                                duration: const Duration(milliseconds: 800),
+                                curve: Curves.easeOutCubic,
+                                builder: (context, value, child) {
+                                  return Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                                        textBaseline: TextBaseline.alphabetic,
+                                        children: [
+                                          if (hasPending)
+                                            AnimatedBuilder(
+                                              animation: _pendingAnimation,
+                                              builder: (context, child) {
+                                                return Icon(
+                                                  Icons.access_time,
+                                                  color: Colors.orange
+                                                      .withValues(alpha: _pendingAnimation.value),
+                                                  size: 22,
+                                                );
+                                              },
+                                            ),
+                                          if (hasPending) const SizedBox(width: 10),
+                                          ShaderMask(
+                                            shaderCallback: (bounds) => LinearGradient(
+                                              colors: hasPending
+                                                  ? [
+                                                      Colors.orange,
+                                                      Colors.orange
+                                                          .withValues(alpha: 0.8),
+                                                    ]
+                                                  : [
+                                                      Colors.white,
+                                                      const Color(0xFFC0C0C0),
+                                                    ],
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                            ).createShader(bounds),
+                                            child: Text(
+                                              value.toStringAsFixed(4),
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 42,
+                                                fontWeight: FontWeight.bold,
+                                                letterSpacing: 1,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Text(
+                                            'BTCS',
+                                            style: TextStyle(
+                                              color: hasPending
+                                                  ? Colors.orange.withValues(alpha: 0.7)
+                                                  : const Color(0xFFC0C0C0),
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w600,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    if (hasPending) const SizedBox(width: 8),
-                                    Text(
-                                      displayBalance?.toStringAsFixed(4) ?? '0.0000',
-                                      style: TextStyle(
-                                        color: hasPending
-                                            ? Colors.orange.withOpacity(0.9)
-                                            : Colors.white,
-                                        fontSize: 36,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'BTCS',
-                                      style: TextStyle(
-                                        color: hasPending
-                                            ? Colors.orange.withOpacity(0.7)
-                                            : Colors.white54,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                                    ],
+                                  );
+                                },
+                              ),
 
                             // Show confirmed balance if different from display balance
                             if (hasPending && confirmedBalance != displayBalance)
@@ -592,57 +694,77 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
 
                             const SizedBox(height: 30),
 
-                            // Chart Container
+                            // Floating Chart - no card background
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: SilverCard(
-                                padding: const EdgeInsets.only(
-                                  top: 20,
-                                  bottom: 10,
-                                  left: 5,
-                                  right: 20,
-                                ),
-                                child: SizedBox(
-                                  height: 200,
-                              child: transactions.isEmpty
-                                  ? Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.show_chart,
-                                      size: 48,
-                                      color: Colors.cyanAccent.withOpacity(0.3),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    const Text(
-                                      'No Activity Yet',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    const Text(
-                                      'Your balance chart will appear here',
-                                      style: TextStyle(
-                                        color: Colors.white38,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                                  : LineChart(
-                                _buildChartData(transactions, displayBalance),
-                                duration: const Duration(milliseconds: 250),
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              child: SizedBox(
+                                height: 220,
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 400),
+                                  switchInCurve: Curves.easeOut,
+                                  switchOutCurve: Curves.easeIn,
+                                  child: transactions.isEmpty
+                                      ? Center(
+                                          key: const ValueKey('empty'),
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              ShaderMask(
+                                                shaderCallback: (bounds) =>
+                                                    LinearGradient(
+                                                  colors: [
+                                                    Colors.cyanAccent
+                                                        .withValues(alpha: 0.5),
+                                                    Colors.cyanAccent
+                                                        .withValues(alpha: 0.2),
+                                                  ],
+                                                ).createShader(bounds),
+                                                child: const Icon(
+                                                  Icons.show_chart_rounded,
+                                                  size: 56,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 16),
+                                              const Text(
+                                                'No Activity Yet',
+                                                style: TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 17,
+                                                  fontWeight: FontWeight.w600,
+                                                  letterSpacing: 0.3,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                'Your balance chart will appear here',
+                                                style: TextStyle(
+                                                  color: Colors.white38,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w400,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      : Padding(
+                                          key: const ValueKey('chart'),
+                                          padding: const EdgeInsets.only(
+                                            top: 10,
+                                            bottom: 10,
+                                            left: 5,
+                                            right: 20,
+                                          ),
+                                          child: LineChart(
+                                            _buildChartData(transactions, displayBalance),
+                                            duration: const Duration(milliseconds: 300),
+                                          ),
+                                        ),
                                 ),
                               ),
                             ),
 
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 20),
 
                             // Pending Transactions Pills
                             if (hasPending)
@@ -653,10 +775,10 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                       decoration: BoxDecoration(
-                                        color: Colors.orange.withOpacity(0.15),
+                                        color: Colors.orange.withValues(alpha: 0.15),
                                         borderRadius: BorderRadius.circular(20),
                                         border: Border.all(
-                                          color: Colors.orange.withOpacity(0.3),
+                                          color: Colors.orange.withValues(alpha: 0.3),
                                           width: 1,
                                         ),
                                       ),
@@ -669,7 +791,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                             child: CircularProgressIndicator(
                                               strokeWidth: 2,
                                               valueColor: AlwaysStoppedAnimation<Color>(
-                                                Colors.orange.withOpacity(0.8),
+                                                Colors.orange.withValues(alpha: 0.8),
                                               ),
                                             ),
                                           ),
@@ -689,7 +811,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                     Text(
                                       'Balance will update after confirmation',
                                       style: TextStyle(
-                                        color: Colors.orange.withOpacity(0.6),
+                                        color: Colors.orange.withValues(alpha: 0.6),
                                         fontSize: 10,
                                       ),
                                     ),
@@ -697,14 +819,16 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                 ),
                               ),
 
-                            Text(
-                              'Last sync: $timestamp',
-                              style: const TextStyle(
-                                color: Colors.white38,
-                                fontSize: 11,
+                              Text(
+                                'Last sync: $timestamp',
+                                style: const TextStyle(
+                                  color: Colors.white38,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w400,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
 
                         // Action Buttons
@@ -773,33 +897,53 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text(
-                                    'Recent Transactions',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
+                                  ShaderMask(
+                                    shaderCallback: (bounds) => const LinearGradient(
+                                      colors: [
+                                        Colors.white,
+                                        Color(0xFFC0C0C0),
+                                      ],
+                                    ).createShader(bounds),
+                                    child: const Text(
+                                      'Recent Transactions',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.3,
+                                      ),
                                     ),
                                   ),
                                   if (hasPending)
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: Colors.orange.withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(10),
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Colors.orange.withValues(alpha: 0.25),
+                                            Colors.orange.withValues(alpha: 0.15),
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: Colors.orange.withValues(alpha: 0.3),
+                                          width: 1,
+                                        ),
                                       ),
                                       child: Text(
                                         '${walletProvider.pendingTransactionsCount} pending',
                                         style: const TextStyle(
                                           color: Colors.orange,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w500,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.2,
                                         ),
                                       ),
                                     ),
                                 ],
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 16),
 
                               // Show pending transactions first if any
                               if (hasPending) ...[
@@ -808,10 +952,10 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                       margin: const EdgeInsets.only(bottom: 8),
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
-                                        color: Colors.orange.withOpacity(0.1),
+                                        color: Colors.orange.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
-                                          color: Colors.orange.withOpacity(0.2),
+                                          color: Colors.orange.withValues(alpha: 0.2),
                                           width: 1,
                                         ),
                                       ),
@@ -820,7 +964,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                           Container(
                                             padding: const EdgeInsets.all(8),
                                             decoration: BoxDecoration(
-                                              color: Colors.orange.withOpacity(0.2),
+                                              color: Colors.orange.withValues(alpha: 0.2),
                                               shape: BoxShape.circle,
                                             ),
                                             child: const Icon(
@@ -846,7 +990,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                                 Text(
                                                   'Pending confirmation',
                                                   style: TextStyle(
-                                                    color: Colors.orange.withOpacity(0.8),
+                                                    color: Colors.orange.withValues(alpha: 0.8),
                                                     fontSize: 11,
                                                   ),
                                                 ),
@@ -867,7 +1011,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                               Text(
                                                 'BTCS',
                                                 style: TextStyle(
-                                                  color: Colors.orange.withOpacity(0.6),
+                                                  color: Colors.orange.withValues(alpha: 0.6),
                                                   fontSize: 10,
                                                 ),
                                               ),
@@ -946,38 +1090,39 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
             child: SafeArea(
               child: GestureDetector(
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const AddressbookView(),
-                    ),
-                  );
+                  // Addressbook feature disabled - click does nothing
+                  // Navigator.push(
+                  //   context,
+                  //   MaterialPageRoute(
+                  //     builder: (context) => const AddressbookView(),
+                  //   ),
+                  // );
                 },
                 child: Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        Colors.cyanAccent.withOpacity(0.9),
-                        Colors.cyanAccent.withOpacity(0.7),
+                        Colors.cyanAccent.withValues(alpha: 0.9),
+                        Colors.cyanAccent.withValues(alpha: 0.7),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
+                      color: Colors.white.withValues(alpha: 0.3),
                       width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.cyanAccent.withOpacity(0.4),
+                        color: Colors.cyanAccent.withValues(alpha: 0.4),
                         blurRadius: 12,
                         spreadRadius: 1,
                         offset: const Offset(0, 4),
                       ),
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha: 0.2),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -994,7 +1139,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                           shape: BoxShape.circle,
                           gradient: RadialGradient(
                             colors: [
-                              Colors.white.withOpacity(0.3),
+                              Colors.white.withValues(alpha: 0.3),
                               Colors.transparent,
                             ],
                           ),
@@ -1009,6 +1154,113 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                     ],
                   ),
                 ),
+              ),
+            ),
+          ),
+          // Chat button in upper left corner - Matching addressbook design
+          Positioned(
+            top: 20,
+            left: 16,
+            child: SafeArea(
+              child: Consumer<ChatProvider>(
+                builder: (context, chatProvider, child) {
+                  return GestureDetector(
+                    onTap: () {
+                      // Chat feature disabled - click does nothing
+                      // Navigator.push(
+                      //   context,
+                      //   MaterialPageRoute(
+                      //     builder: (context) => const ChatView(),
+                      //   ),
+                      // );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.cyanAccent.withValues(alpha: 0.9),
+                            Colors.cyanAccent.withValues(alpha: 0.7),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.cyanAccent.withValues(alpha: 0.4),
+                            blurRadius: 12,
+                            spreadRadius: 1,
+                            offset: const Offset(0, 4),
+                          ),
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          // Background glow effect
+                          Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.3),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                          // Icon
+                          const Icon(
+                            Icons.chat_bubble,
+                            color: Colors.black,
+                            size: 26,
+                          ),
+                          // Unread badge
+                          if (chatProvider.unreadCount > 0)
+                            Positioned(
+                              right: -8,
+                              top: -8,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 18,
+                                  minHeight: 18,
+                                ),
+                                child: Text(
+                                  chatProvider.unreadCount > 99
+                                      ? '99+'
+                                      : chatProvider.unreadCount.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ),

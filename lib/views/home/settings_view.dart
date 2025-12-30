@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:app_settings/app_settings.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
 import 'package:bitcoinsilver_wallet/views/home/privacy_view.dart';
@@ -24,10 +25,24 @@ class _SettingsViewState extends State<SettingsView> {
   bool _isCheckingBiometric = true;
   String _biometricType = 'Biometric';
 
+  // Notification settings
+  bool _notificationsEnabled = false;
+  bool _isTogglingNotifications = false;
+
   @override
   void initState() {
     super.initState();
     _checkBiometricStatus();
+    _loadNotificationPreference();
+  }
+
+  Future<void> _loadNotificationPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _notificationsEnabled = prefs.getBool('notifications_enabled') ?? false;
+      });
+    }
   }
 
   Future<void> _checkBiometricStatus() async {
@@ -93,6 +108,225 @@ class _SettingsViewState extends State<SettingsView> {
     }
   }
 
+  Future<void> _toggleNotifications(bool value, WalletProvider wp) async {
+    if (_isTogglingNotifications) return;
+
+    setState(() {
+      _isTogglingNotifications = true;
+    });
+
+    try {
+      if (value) {
+        // Enabling - show confirmation dialog
+        final enable = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+              title: const Row(
+                children: [
+                  Icon(
+                    Icons.notifications_active,
+                    color: Color(0xFFC0C0C0),
+                    size: 28,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Enable Push Notifications',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+              content: const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Would you like to enable push notifications?',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 16,
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Get instant push notifications when you receive transactions to your wallet.',
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 14,
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'You will be taken to system settings where you can choose which notification types to enable.',
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFC0C0C0),
+                    foregroundColor: Colors.black,
+                  ),
+                  child: const Text('Enable'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (enable != true) {
+          setState(() {
+            _isTogglingNotifications = false;
+          });
+          return;
+        }
+
+        // Save preference
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('notifications_enabled', true);
+
+        // Initialize notifications
+        final address = wp.address;
+        if (address != null) {
+          await wp.enableNotifications(address);
+        }
+
+        setState(() {
+          _notificationsEnabled = true;
+        });
+
+        // Open system notification settings
+        if (mounted) {
+          await AppSettings.openAppSettings(type: AppSettingsType.notification);
+        }
+      } else {
+        // Disabling - show confirmation dialog
+        final disable = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+              title: const Row(
+                children: [
+                  Icon(
+                    Icons.notifications_off,
+                    color: Colors.orange,
+                    size: 28,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Disable Notifications',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+              content: const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Are you sure you want to disable push notifications?',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 16,
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Your device will no longer receive any notifications.',
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.black,
+                  ),
+                  child: const Text('Disable'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (disable != true) {
+          setState(() {
+            _isTogglingNotifications = false;
+          });
+          return;
+        }
+
+        // Unregister from backend
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('notifications_enabled', false);
+
+        final address = wp.address;
+        if (address != null) {
+          await wp.disableNotifications(address);
+        }
+
+        setState(() {
+          _notificationsEnabled = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Push notifications disabled'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update notifications: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isTogglingNotifications = false;
+      });
+    }
+  }
+
   Future<void> _showDeleteWalletDialog(BuildContext context, WalletProvider wp, BlockchainProvider bp) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -144,9 +378,9 @@ class _SettingsViewState extends State<SettingsView> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
+                    color: Colors.orange.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                   ),
                   child: const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -176,9 +410,9 @@ class _SettingsViewState extends State<SettingsView> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: Colors.red.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                    border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                   ),
                   child: const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -319,10 +553,10 @@ class _SettingsViewState extends State<SettingsView> {
                     Container(
                       height: 72,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
+                        color: Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.white.withValues(alpha: 0.1),
                         ),
                       ),
                       child: const Center(
@@ -339,10 +573,10 @@ class _SettingsViewState extends State<SettingsView> {
                   else if (_biometricAvailable)
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
+                        color: Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.white.withValues(alpha: 0.1),
                         ),
                       ),
                       child: SwitchListTile(
@@ -364,17 +598,17 @@ class _SettingsViewState extends State<SettingsView> {
                         ),
                         value: _biometricEnabled,
                         onChanged: _toggleBiometric,
-                        activeColor: const Color(0xFFC0C0C0),
+                        activeThumbColor: const Color(0xFFC0C0C0),
                       ),
                     )
                   else
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.1),
+                        color: Colors.orange.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Colors.orange.withOpacity(0.3),
+                          color: Colors.orange.withValues(alpha: 0.3),
                         ),
                       ),
                       child: const Row(
@@ -390,6 +624,40 @@ class _SettingsViewState extends State<SettingsView> {
                         ],
                       ),
                     ),
+
+                  const SizedBox(height: 15),
+
+                  // Push Notifications Toggle
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    child: SwitchListTile(
+                      title: const Text(
+                        'Push Notifications',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      subtitle: Text(
+                        _notificationsEnabled
+                            ? 'Get notified when you receive BTCS'
+                            : 'You will not receive transaction alerts',
+                        style: const TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                      secondary: Icon(
+                        _notificationsEnabled ? Icons.notifications_active : Icons.notifications_off,
+                        color: _notificationsEnabled ? const Color(0xFFC0C0C0) : Colors.white54,
+                      ),
+                      value: _notificationsEnabled,
+                      onChanged: _isTogglingNotifications
+                          ? null
+                          : (value) => _toggleNotifications(value, wp),
+                      activeThumbColor: const Color(0xFFC0C0C0),
+                    ),
+                  ),
 
                   const SizedBox(height: 30),
                   const Text(

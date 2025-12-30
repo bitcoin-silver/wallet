@@ -58,7 +58,7 @@ class _HomeViewState extends State<HomeView> {
             ),
             border: Border(
               top: BorderSide(
-                color: const Color(0xFFC0C0C0).withOpacity(0.2),
+                color: const Color(0xFFC0C0C0).withValues(alpha: 0.2),
                 width: 1,
               ),
             ),
@@ -82,7 +82,7 @@ class _HomeViewState extends State<HomeView> {
             currentIndex: _selectedIndex,
             onTap: _onItemTapped,
             selectedItemColor: const Color(0xFFC0C0C0),
-            unselectedItemColor: Colors.white.withOpacity(0.5),
+            unselectedItemColor: Colors.white.withValues(alpha: 0.5),
             backgroundColor: Colors.transparent,
             elevation: 0,
             showSelectedLabels: false,

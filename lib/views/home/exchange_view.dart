@@ -467,8 +467,8 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                                     shape: BoxShape.circle,
                                     gradient: RadialGradient(
                                       colors: [
-                                        Colors.cyanAccent.withOpacity(0.3),
-                                        Colors.cyanAccent.withOpacity(0.1),
+                                        Colors.cyanAccent.withValues(alpha: 0.3),
+                                        Colors.cyanAccent.withValues(alpha: 0.1),
                                         Colors.transparent,
                                       ],
                                       stops: const [0.3, 0.6, 1.0],
@@ -490,8 +490,8 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                                           gradient: SweepGradient(
                                             colors: [
                                               Colors.transparent,
-                                              Colors.cyanAccent.withOpacity(0.2),
-                                              Colors.cyanAccent.withOpacity(0.4),
+                                              Colors.cyanAccent.withValues(alpha: 0.2),
+                                              Colors.cyanAccent.withValues(alpha: 0.4),
                                               Colors.transparent,
                                             ],
                                             stops: const [0.0, 0.25, 0.5, 1.0],
@@ -509,19 +509,19 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                                     shape: BoxShape.circle,
                                     gradient: LinearGradient(
                                       colors: [
-                                        Colors.black.withOpacity(0.8),
-                                        Colors.black.withOpacity(0.6),
+                                        Colors.black.withValues(alpha: 0.8),
+                                        Colors.black.withValues(alpha: 0.6),
                                       ],
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                     ),
                                     border: Border.all(
-                                      color: Colors.cyanAccent.withOpacity(0.5),
+                                      color: Colors.cyanAccent.withValues(alpha: 0.5),
                                       width: 3,
                                     ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.cyanAccent.withOpacity(0.5),
+                                        color: Colors.cyanAccent.withValues(alpha: 0.5),
                                         blurRadius: 20,
                                         spreadRadius: 2,
                                       ),
@@ -579,7 +579,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                   Text(
                     'Trade Bitcoin Silver on Premium Exchanges',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 15,
                       fontWeight: FontWeight.w300,
                       letterSpacing: 0.5,
@@ -605,7 +605,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                             Container(
                               height: 40,
                               width: 1,
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                             ),
                             _buildPriceInfo(
                               'Your Balance',
@@ -616,7 +616,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                             Container(
                               height: 40,
                               width: 1,
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                             ),
                             _buildPriceInfo(
                               'USD Value',
@@ -633,13 +633,13 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.3),
+                                  color: Colors.black.withValues(alpha: 0.3),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
                                   'Market Cap: ${_formatMarketCap(btcsPrice, _moneySupply)}',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.7),
+                                    color: Colors.white.withValues(alpha: 0.7),
                                     fontSize: 12,
                                   ),
                                 ),
@@ -648,13 +648,13 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.3),
+                                  color: Colors.black.withValues(alpha: 0.3),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
                                   'Supply: ${_formatSupply(_moneySupply)} BTCS',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.7),
+                                    color: Colors.white.withValues(alpha: 0.7),
                                     fontSize: 12,
                                   ),
                                 ),
@@ -775,10 +775,10 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
+                      color: Colors.blue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Colors.blue.withOpacity(0.3),
+                        color: Colors.blue.withValues(alpha: 0.3),
                         width: 1,
                       ),
                     ),
@@ -802,7 +802,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                         Text(
                           'Bitcoin Silver (BTCS) is listed on multiple exchanges. Click on any exchange above to start trading. Always ensure you\'re using the official exchange links.',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
+                            color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 14,
                             height: 1.5,
                           ),
@@ -845,19 +845,19 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
               gradient: isPrimary
                   ? LinearGradient(
                 colors: [
-                  Colors.cyanAccent.withOpacity(0.1),
+                  Colors.cyanAccent.withValues(alpha: 0.1),
                   Colors.transparent,
                 ],
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
               )
                   : null,
-              color: !isPrimary ? Colors.white.withOpacity(0.05) : null,
+              color: !isPrimary ? Colors.white.withValues(alpha: 0.05) : null,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isPrimary
-                    ? Colors.cyanAccent.withOpacity(0.3)
-                    : Colors.white.withOpacity(0.1),
+                    ? Colors.cyanAccent.withValues(alpha: 0.3)
+                    : Colors.white.withValues(alpha: 0.1),
                 width: isPrimary ? 1.5 : 1,
               ),
             ),
@@ -867,7 +867,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.cyanAccent.withOpacity(0.1),
+                    color: Colors.cyanAccent.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -920,7 +920,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                       Text(
                         volume,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                           fontSize: 12,
                         ),
                       ),
@@ -943,7 +943,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                     const SizedBox(height: 4),
                     Icon(
                       Icons.arrow_forward_ios,
-                      color: Colors.white.withOpacity(0.4),
+                      color: Colors.white.withValues(alpha: 0.4),
                       size: 16,
                     ),
                   ],
@@ -970,7 +970,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.6),
+            color: Colors.white.withValues(alpha: 0.6),
             fontSize: 11,
           ),
         ),

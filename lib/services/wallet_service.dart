@@ -32,9 +32,8 @@ class WalletService {
       final pubKeyHash = _pubKeyToP2WPKH(pubKey);
 
       return _encodeBech32Address(Config.addressPrefix, 0, pubKeyHash);
-    } catch (e, stacktrace) {
+    } catch (e) {
       //print('Error recovering address from WIF: $e');
-      //print(stacktrace);
       return null;
     }
   }

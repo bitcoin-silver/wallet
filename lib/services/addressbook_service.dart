@@ -96,26 +96,65 @@ class AddressbookService {
           if (data['success'] == true && data.containsKey('data') && data['data'] != null) {
             final entry = data['data'];
             // API returns 'u' for username and 'a' for address
-            return AddressbookEntry(
-              username: entry['u'] as String? ?? entry['username'] as String,
-              address: entry['a'] as String? ?? entry['address'] as String,
-            );
+            try {
+              final username = (entry['u'] ?? entry['username'])?.toString() ?? '';
+              final address = (entry['a'] ?? entry['address'])?.toString() ?? '';
+
+              if (username.isEmpty || address.isEmpty) {
+                debugPrint('⚠️ Invalid entry data: missing username or address');
+                return null;
+              }
+
+              return AddressbookEntry(
+                username: username,
+                address: address,
+              );
+            } catch (e) {
+              debugPrint('⚠️ Error parsing entry data: $e');
+              return null;
+            }
           } else if (data.containsKey('address')) {
             // Direct response format (fallback)
-            return AddressbookEntry(
-              username: data['username'] as String,
-              address: data['address'] as String,
-            );
+            try {
+              final username = data['username']?.toString() ?? '';
+              final address = data['address']?.toString() ?? '';
+
+              if (username.isEmpty || address.isEmpty) {
+                debugPrint('⚠️ Invalid direct response: missing username or address');
+                return null;
+              }
+
+              return AddressbookEntry(
+                username: username,
+                address: address,
+              );
+            } catch (e) {
+              debugPrint('⚠️ Error parsing direct response: $e');
+              return null;
+            }
           }
         }
 
         // Check if data is a list (fallback)
         if (data is List && data.isNotEmpty) {
-          final entry = data.first;
-          return AddressbookEntry(
-            username: entry['u'] as String? ?? entry['username'] as String,
-            address: entry['a'] as String? ?? entry['address'] as String,
-          );
+          try {
+            final entry = data.first;
+            final username = (entry['u'] ?? entry['username'])?.toString() ?? '';
+            final address = (entry['a'] ?? entry['address'])?.toString() ?? '';
+
+            if (username.isEmpty || address.isEmpty) {
+              debugPrint('⚠️ Invalid list entry: missing username or address');
+              return null;
+            }
+
+            return AddressbookEntry(
+              username: username,
+              address: address,
+            );
+          } catch (e) {
+            debugPrint('⚠️ Error parsing list entry: $e');
+            return null;
+          }
         }
 
         return null;
@@ -164,26 +203,65 @@ class AddressbookService {
           if (data['success'] == true && data.containsKey('data') && data['data'] != null) {
             final entry = data['data'];
             // API returns 'u' for username and 'a' for address
-            return AddressbookEntry(
-              username: entry['u'] as String? ?? entry['username'] as String,
-              address: entry['a'] as String? ?? entry['address'] as String,
-            );
+            try {
+              final username = (entry['u'] ?? entry['username'])?.toString() ?? '';
+              final address = (entry['a'] ?? entry['address'])?.toString() ?? '';
+
+              if (username.isEmpty || address.isEmpty) {
+                debugPrint('⚠️ Invalid entry data: missing username or address');
+                return null;
+              }
+
+              return AddressbookEntry(
+                username: username,
+                address: address,
+              );
+            } catch (e) {
+              debugPrint('⚠️ Error parsing entry data: $e');
+              return null;
+            }
           } else if (data.containsKey('username')) {
             // Direct response format (fallback)
-            return AddressbookEntry(
-              username: data['username'] as String,
-              address: data['address'] as String,
-            );
+            try {
+              final username = data['username']?.toString() ?? '';
+              final address = data['address']?.toString() ?? '';
+
+              if (username.isEmpty || address.isEmpty) {
+                debugPrint('⚠️ Invalid direct response: missing username or address');
+                return null;
+              }
+
+              return AddressbookEntry(
+                username: username,
+                address: address,
+              );
+            } catch (e) {
+              debugPrint('⚠️ Error parsing direct response: $e');
+              return null;
+            }
           }
         }
 
         // Check if data is a list (fallback)
         if (data is List && data.isNotEmpty) {
-          final entry = data.first;
-          return AddressbookEntry(
-            username: entry['u'] as String? ?? entry['username'] as String,
-            address: entry['a'] as String? ?? entry['address'] as String,
-          );
+          try {
+            final entry = data.first;
+            final username = (entry['u'] ?? entry['username'])?.toString() ?? '';
+            final address = (entry['a'] ?? entry['address'])?.toString() ?? '';
+
+            if (username.isEmpty || address.isEmpty) {
+              debugPrint('⚠️ Invalid list entry: missing username or address');
+              return null;
+            }
+
+            return AddressbookEntry(
+              username: username,
+              address: address,
+            );
+          } catch (e) {
+            debugPrint('⚠️ Error parsing list entry: $e');
+            return null;
+          }
         }
 
         return null;

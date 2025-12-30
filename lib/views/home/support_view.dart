@@ -36,8 +36,8 @@ class SupportView extends StatelessWidget {
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
                       colors: [
-                        Colors.cyanAccent.withOpacity(0.3),
-                        Colors.cyanAccent.withOpacity(0.1),
+                        Colors.cyanAccent.withValues(alpha: 0.3),
+                        Colors.cyanAccent.withValues(alpha: 0.1),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -170,8 +170,8 @@ class SupportView extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Colors.cyanAccent.withOpacity(0.2),
-                      Colors.cyanAccent.withOpacity(0.05),
+                      Colors.cyanAccent.withValues(alpha: 0.2),
+                      Colors.cyanAccent.withValues(alpha: 0.05),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -239,10 +239,10 @@ class SupportView extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
+                color: Colors.white.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   width: 1,
                 ),
               ),
@@ -277,7 +277,7 @@ class SupportView extends StatelessWidget {
                         Text(
                           subtitle,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
+                            color: Colors.white.withValues(alpha: 0.6),
                             fontSize: 14,
                           ),
                         ),
@@ -286,7 +286,7 @@ class SupportView extends StatelessWidget {
                   ),
                   Icon(
                     Icons.arrow_forward_ios,
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                     size: 16,
                   ),
                 ],
@@ -311,6 +311,7 @@ class SupportView extends StatelessWidget {
 
         if (!launchedInApp) {
           // If both fail, show error with copy option
+          if (!context.mounted) return;
           _showLinkDialog(context, url, title);
         }
       }
@@ -320,6 +321,7 @@ class SupportView extends StatelessWidget {
         await launchUrl(uri, mode: LaunchMode.platformDefault);
       } catch (e2) {
         // If all methods fail, show dialog with copy option
+        if (!context.mounted) return;
         _showLinkDialog(context, url, title);
       }
     }
@@ -334,7 +336,7 @@ class SupportView extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
-              color: Colors.cyanAccent.withOpacity(0.3),
+              color: Colors.cyanAccent.withValues(alpha: 0.3),
               width: 1,
             ),
           ),
@@ -361,7 +363,7 @@ class SupportView extends StatelessWidget {
               Text(
                 'Unable to open this link automatically. Copy the URL below:',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 14,
                 ),
               ),
@@ -369,10 +371,10 @@ class SupportView extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Colors.cyanAccent.withOpacity(0.3),
+                    color: Colors.cyanAccent.withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(
@@ -442,10 +444,12 @@ class SupportView extends StatelessWidget {
               await launchUrl(uri, mode: LaunchMode.externalApplication);
             } else {
               // No email app available, show dialog with copy option
+              if (!context.mounted) return;
               _showEmailDialog(context, email);
             }
           } catch (e) {
             // Error launching email app, show dialog instead
+            if (!context.mounted) return;
             _showEmailDialog(context, email);
           }
         },
@@ -453,10 +457,10 @@ class SupportView extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               width: 1,
             ),
           ),
@@ -491,7 +495,7 @@ class SupportView extends StatelessWidget {
                     Text(
                       email,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
+                        color: Colors.white.withValues(alpha: 0.6),
                         fontSize: 14,
                       ),
                     ),
@@ -500,7 +504,7 @@ class SupportView extends StatelessWidget {
               ),
               Icon(
                 Icons.arrow_forward_ios,
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 size: 16,
               ),
             ],
@@ -519,7 +523,7 @@ class SupportView extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
-              color: Colors.cyanAccent.withOpacity(0.3),
+              color: Colors.cyanAccent.withValues(alpha: 0.3),
               width: 1,
             ),
           ),
@@ -544,7 +548,7 @@ class SupportView extends StatelessWidget {
               Text(
                 'Copy the email address below:',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 14,
                 ),
               ),
@@ -552,10 +556,10 @@ class SupportView extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Colors.cyanAccent.withOpacity(0.3),
+                    color: Colors.cyanAccent.withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(

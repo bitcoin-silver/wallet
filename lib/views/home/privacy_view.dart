@@ -123,12 +123,12 @@ class _PrivacyViewState extends State<PrivacyView>
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
     return AppBar(
-      backgroundColor: _isScrolled ? Colors.black.withOpacity(0.9) : Colors.transparent,
+      backgroundColor: _isScrolled ? Colors.black.withValues(alpha: 0.9) : Colors.transparent,
       elevation: _isScrolled ? 1 : 0,
       leading: Container(
         margin: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: IconButton(
@@ -211,13 +211,13 @@ class _PrivacyViewState extends State<PrivacyView>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.blue.withOpacity(0.1),
-            Colors.purple.withOpacity(0.05),
+            Colors.blue.withValues(alpha: 0.1),
+            Colors.purple.withValues(alpha: 0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha: 0.1),
           width: 1,
         ),
       ),
@@ -229,7 +229,7 @@ class _PrivacyViewState extends State<PrivacyView>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.2),
+                  color: Colors.blue.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
@@ -380,7 +380,7 @@ class _PrivacyViewState extends State<PrivacyView>
                 height: 32,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [color.withOpacity(0.3), color.withOpacity(0.1)],
+                    colors: [color.withValues(alpha: 0.3), color.withValues(alpha: 0.1)],
                   ),
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -418,11 +418,11 @@ class _PrivacyViewState extends State<PrivacyView>
               margin: const EdgeInsets.only(left: 20),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.05),
+                color: color.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(8),
                 border: Border(
                   left: BorderSide(
-                    color: color.withOpacity(0.5),
+                    color: color.withValues(alpha: 0.5),
                     width: 3,
                   ),
                 ),
@@ -450,7 +450,7 @@ class _PrivacyViewState extends State<PrivacyView>
             width: 6,
             height: 6,
             decoration: BoxDecoration(
-              color: accentColor.withOpacity(0.6),
+              color: accentColor.withValues(alpha: 0.6),
               shape: BoxShape.circle,
             ),
           ),
@@ -478,7 +478,7 @@ class _PrivacyViewState extends State<PrivacyView>
         children: [
           Icon(
             Icons.chevron_right,
-            color: accentColor.withOpacity(0.6),
+            color: accentColor.withValues(alpha: 0.6),
             size: 16,
           ),
           const SizedBox(width: 4),
@@ -503,13 +503,13 @@ class _PrivacyViewState extends State<PrivacyView>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.white.withOpacity(0.05),
-            Colors.white.withOpacity(0.02),
+            Colors.white.withValues(alpha: 0.05),
+            Colors.white.withValues(alpha: 0.02),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha: 0.1),
         ),
       ),
       child: Column(
@@ -533,7 +533,7 @@ class _PrivacyViewState extends State<PrivacyView>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
