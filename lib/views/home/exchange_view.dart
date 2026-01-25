@@ -528,7 +528,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                                     ],
                                   ),
                                   child: Image.asset(
-                                    'assets/logo.png',
+                                    'assets/logo_big.png',
                                     height: 80,
                                     width: 80,
                                     errorBuilder: (context, error, stackTrace) {

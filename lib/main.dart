@@ -13,7 +13,8 @@ import 'package:bitcoinsilver_wallet/views/biometric_gate.dart';
 import 'package:bitcoinsilver_wallet/views/chat/chat_view.dart';
 import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
 import 'package:bitcoinsilver_wallet/services/chat_notification_service.dart';
-import 'package:bitcoinsilver_wallet/services/migration_service.dart';
+// Migration service removed - was causing issues on Play Store updates
+// import 'package:bitcoinsilver_wallet/services/migration_service.dart';
 
 // Backend URL - HTTPS endpoint
 const String backendUrl = 'https://btcs-vps13.duckdns.org';
@@ -39,9 +40,6 @@ void main() async {
   // Initialize RPC credentials in secure storage
   final rpcConfig = RpcConfigService();
   await rpcConfig.initializeRpcCredentials();
-
-  // Check app version and run migrations if needed
-  await MigrationService.checkAndMigrate();
 
   // Enable edge-to-edge display for Android 15+ compatibility
   SystemChrome.setEnabledSystemUIMode(
@@ -70,29 +68,17 @@ void main() async {
   // Link providers - so notification taps refresh transactions
   wp.setTransactionRefreshCallback((address) => bp.loadBlockchain(address));
 
-  // Load wallet synchronously (fast, only reads from secure storage)
+  // Load wallet and data synchronously
   try {
     await wp.loadWallet();
+    if (wp.address != null) {
+      await wp.fetchUtxos(force: true);
+      await bp.loadBlockchain(wp.address);
+    }
   } catch (e) {
     if (kDebugMode) {
       debugPrint('Error loading wallet: $e');
     }
-  }
-
-  // Don't block app startup - load data in background after app shows
-  // This makes the app feel much faster
-  if (wp.address != null) {
-    // Schedule background data loading after app is displayed
-    Future.microtask(() async {
-      try {
-        await wp.fetchUtxos(force: true);
-        await bp.loadBlockchain(wp.address);
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('Error during background initialization: $e');
-        }
-      }
-    });
   }
 
   // Add error handling for Flutter framework

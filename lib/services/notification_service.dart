@@ -1,8 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+
+// Keys for local storage
+const String _registeredTokenKey = 'fcm_registered_token';
+const String _registeredAddressKey = 'fcm_registered_address';
 
 // API Key for backend authentication (from dart_defines.json)
 const String apiKey = String.fromEnvironment('NOTIFICATION_API_KEY');
@@ -25,6 +30,7 @@ class NotificationService {
   Function(String txid)? onNotificationTapped;
 
   static bool _initialized = false;
+  static bool _isInitializing = false;
 
   NotificationService({
     required this.backendUrl,
@@ -32,16 +38,66 @@ class NotificationService {
     this.onNotificationTapped,
   });
 
+  /// Check if we need to register (token or address changed)
+  Future<bool> _needsRegistration(String token, String address) async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedToken = prefs.getString(_registeredTokenKey);
+    final savedAddress = prefs.getString(_registeredAddressKey);
+    return savedToken != token || savedAddress != address;
+  }
+
+  /// Save registration info after successful registration
+  Future<void> _saveRegistration(String token, String address) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_registeredTokenKey, token);
+    await prefs.setString(_registeredAddressKey, address);
+    debugPrint('✓ Registration saved locally');
+  }
+
+  /// Clear saved registration (call when disabling notifications)
+  Future<void> _clearRegistration() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_registeredTokenKey);
+    await prefs.remove(_registeredAddressKey);
+    debugPrint('✓ Registration cleared locally');
+  }
+
   /// Initialize Firebase and request notification permissions
   Future<void> initialize(String walletAddress) async {
+    // Prevent concurrent initialization
+    if (_isInitializing) {
+      debugPrint('NotificationService initialization already in progress, skipping');
+      return;
+    }
+    _isInitializing = true; // Set immediately to prevent race conditions
+
     if (_initialized) {
-      debugPrint('NotificationService already initialized, re-registering device...');
-      // Even if already initialized, we should re-register the device
-      // This ensures the backend has the current token after re-enabling
-      String? token = await _messaging.getToken();
-      if (token != null) {
-        await registerDevice(walletAddress, token);
+      debugPrint('NotificationService already initialized, checking if re-registration needed...');
+      String? token;
+      try {
+        token = await _messaging.getToken();
+      } catch (e) {
+        if (e.toString().contains('FIS_AUTH_ERROR') || e.toString().contains('IOException')) {
+          debugPrint('⚠ FIS auth error, clearing token and retrying...');
+          await _messaging.deleteToken();
+          await _clearRegistration();
+          await Future.delayed(const Duration(seconds: 1));
+          token = await _messaging.getToken();
+        }
       }
+      if (token != null) {
+        // Only register if token or address changed
+        if (await _needsRegistration(token, walletAddress)) {
+          debugPrint('Token or address changed, re-registering...');
+          await registerDevice(walletAddress, token);
+          await enablePriceAlerts(walletAddress);
+          await enableChatNotifications(walletAddress);
+          await _saveRegistration(token, walletAddress);
+        } else {
+          debugPrint('✓ Already registered with same token, skipping');
+        }
+      }
+      _isInitializing = false;
       return;
     }
 
@@ -59,19 +115,42 @@ class NotificationService {
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
         debugPrint('✓ Notification permission granted');
 
-        // Get device token
-        String? token = await _messaging.getToken();
+        // Get device token with FIS auth error recovery
+        String? token;
+        try {
+          token = await _messaging.getToken();
+        } catch (e) {
+          if (e.toString().contains('FIS_AUTH_ERROR') || e.toString().contains('IOException')) {
+            debugPrint('⚠ FIS auth error, clearing token and retrying...');
+            await _messaging.deleteToken();
+            await Future.delayed(const Duration(seconds: 1));
+            token = await _messaging.getToken();
+          } else {
+            rethrow;
+          }
+        }
 
         if (token != null) {
           debugPrint('✓ FCM Token: ${token.substring(0, 20)}...');
 
-          // Register with backend
-          await registerDevice(walletAddress, token);
+          // Only register if token or address changed
+          if (await _needsRegistration(token, walletAddress)) {
+            // Register with backend
+            await registerDevice(walletAddress, token);
+            await enablePriceAlerts(walletAddress);
+            await enableChatNotifications(walletAddress);
+            await _saveRegistration(token, walletAddress);
+          } else {
+            debugPrint('✓ Already registered with same token, skipping');
+          }
 
           // Listen for token refresh
-          _messaging.onTokenRefresh.listen((newToken) {
+          _messaging.onTokenRefresh.listen((newToken) async {
             debugPrint('✓ FCM Token refreshed');
-            registerDevice(walletAddress, newToken);
+            await registerDevice(walletAddress, newToken);
+            await enablePriceAlerts(walletAddress);
+            await enableChatNotifications(walletAddress);
+            await _saveRegistration(newToken, walletAddress);
           });
         } else {
           debugPrint('✗ Failed to get FCM token');
@@ -101,9 +180,11 @@ class NotificationService {
       });
 
       _initialized = true;
+      _isInitializing = false;
       debugPrint('✓ NotificationService initialized successfully');
 
     } catch (e) {
+      _isInitializing = false;
       debugPrint('✗ Failed to initialize NotificationService: $e');
       rethrow;
     }
@@ -159,11 +240,96 @@ class NotificationService {
 
       if (response.statusCode == 200) {
         debugPrint('✓ Device unregistered from backend');
+        await _clearRegistration();
       } else {
         debugPrint('✗ Unregistration failed: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('✗ Unregister error: $e');
+    }
+  }
+
+  /// Enable price alerts for this device
+  Future<void> enablePriceAlerts(String address) async {
+    try {
+      String? token = await _messaging.getToken();
+      if (token == null) return;
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/api/price-alerts/enable'),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+        },
+        body: json.encode({
+          'address': address,
+          'device_token': token,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('✓ Price alerts enabled');
+      } else {
+        debugPrint('✗ Enable price alerts failed: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('✗ Enable price alerts error: $e');
+    }
+  }
+
+  /// Enable chat notifications for this device
+  Future<void> enableChatNotifications(String address) async {
+    try {
+      String? token = await _messaging.getToken();
+      if (token == null) return;
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/api/chat-notifications/enable'),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+        },
+        body: json.encode({
+          'address': address,
+          'device_token': token,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('✓ Chat notifications enabled');
+      } else {
+        debugPrint('✗ Enable chat notifications failed: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('✗ Enable chat notifications error: $e');
+    }
+  }
+
+  /// Disable chat notifications for this device
+  Future<void> disableChatNotifications(String address) async {
+    try {
+      String? token = await _messaging.getToken();
+      if (token == null) return;
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/api/chat-notifications/disable'),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+        },
+        body: json.encode({
+          'address': address,
+          'device_token': token,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('✓ Chat notifications disabled');
+      } else {
+        debugPrint('✗ Disable chat notifications failed: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('✗ Disable chat notifications error: $e');
     }
   }
 

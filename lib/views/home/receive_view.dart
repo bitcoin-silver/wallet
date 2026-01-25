@@ -131,9 +131,11 @@ class _ReceiveViewState extends State<ReceiveView>
       }
     }
 
-    Share.share(
-      shareText,
-      subject: 'BTCS Wallet Address',
+    SharePlus.instance.share(
+      ShareParams(
+        text: shareText,
+        subject: 'BTCS Wallet Address',
+      ),
     );
   }
 

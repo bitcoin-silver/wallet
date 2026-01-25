@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:bitcoinsilver_wallet/models/addressbook_entry.dart';
 
 class AddressbookService {
-  static const String _baseUrl = 'https://bitcoinsilver.top/api/register';
+  static const String _baseUrl = 'https://api.bitcoinsilver.top/addressbook';
   static const Duration _timeout = Duration(seconds: 15);
 
   /// Register a new username with an address
@@ -15,7 +15,7 @@ class AddressbookService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$_baseUrl/'),
+        Uri.parse('$_baseUrl/register'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -73,7 +73,7 @@ class AddressbookService {
   static Future<AddressbookEntry?> lookupByUsername(String username) async {
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/?username=${Uri.encodeComponent(username)}'),
+        Uri.parse('$_baseUrl/username/${Uri.encodeComponent(username)}'),
         headers: {'Accept': 'application/json'},
       ).timeout(
         _timeout,
@@ -180,7 +180,7 @@ class AddressbookService {
   static Future<AddressbookEntry?> lookupByAddress(String address) async {
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/?address=${Uri.encodeComponent(address)}'),
+        Uri.parse('$_baseUrl/address/${Uri.encodeComponent(address)}'),
         headers: {'Accept': 'application/json'},
       ).timeout(
         _timeout,

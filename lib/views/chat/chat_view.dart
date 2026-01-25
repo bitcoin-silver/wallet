@@ -388,7 +388,7 @@ class _ChatViewState extends State<ChatView> {
                         colors: [Colors.white, Color(0xFFC0C0C0)],
                       ).createShader(bounds),
                       child: const Text(
-                        'BTCS Messenger',
+                        '💬 BTCS Messenger',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 20,
@@ -542,7 +542,7 @@ class _ChatViewState extends State<ChatView> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        displayName,
+                        '👤$displayName',
                         style: TextStyle(
                           color: isMyMessage
                               ? Colors.cyanAccent

@@ -9,7 +9,14 @@ import 'package:bitcoinsilver_wallet/services/notification_service.dart';
 const String backendUrl = 'https://btcs-vps13.duckdns.org';
 
 class WalletProvider with ChangeNotifier {
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  // New storage with encryptedSharedPreferences for better Android compatibility
+  final FlutterSecureStorage _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+  );
+  // Legacy storage for migration from old versions
+  final FlutterSecureStorage _legacyStorage = const FlutterSecureStorage();
   final WalletService _ws = WalletService();
   late NotificationService _notificationService;
   Function(String address)? _onTransactionTapped;
@@ -111,7 +118,31 @@ class WalletProvider with ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
-      _privateKey = await _storage.read(key: 'key');
+      // Try new storage first (with timeout to prevent hang)
+      _privateKey = await _storage.read(key: 'key').timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => null,
+      );
+
+      // If not found, try legacy storage and migrate
+      if (_privateKey == null) {
+        try {
+          final legacyKey = await _legacyStorage.read(key: 'key').timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => null,
+          );
+          if (legacyKey != null) {
+            // Migrate to new storage
+            _privateKey = legacyKey;
+            await _storage.write(key: 'key', value: legacyKey);
+            await _legacyStorage.delete(key: 'key');
+            debugPrint('✓ Migrated wallet key to new storage');
+          }
+        } catch (e) {
+          debugPrint('Legacy storage read failed: $e');
+        }
+      }
+
       if (_privateKey != null) {
         _address = _ws.loadAddressFromKey(_privateKey!);
 

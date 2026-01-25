@@ -42,10 +42,19 @@
 -keep class okhttp3.** { *; }
 -keep class okio.** { *; }
 
-# Bitcoin/Crypto libraries (if any)
--keep class org.bitcoinj.** { *; }
--dontwarn org.bitcoinj.**
+# Crypto libraries (BouncyCastle used by PointyCastle)
+-keep class org.bouncycastle.** { *; }
+-dontwarn org.bouncycastle.**
 
 # Keep model classes (prevent serialization issues)
 -keep class **.models.** { *; }
 -keep class **.data.** { *; }
+
+# Suppress Java 8 desugaring warnings (unused rules from dependencies)
+-dontwarn j$.util.**
+
+# Flutter Secure Storage
+-keep class com.it_nomads.fluttersecurestorage.** { *; }
+-keep class androidx.security.crypto.** { *; }
+-keep class com.google.crypto.tink.** { *; }
+-dontwarn com.google.crypto.tink.**

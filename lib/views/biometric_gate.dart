@@ -77,14 +77,24 @@ class _BiometricGateState extends State<BiometricGate> with WidgetsBindingObserv
       final isAvailable = await _biometricService.isBiometricAvailable();
 
       if (!isAvailable) {
-        // Biometric was enabled but device doesn't support it anymore
-        // (e.g., emulator without biometric setup)
-        // Disable it and allow access
-        await _biometricService.disableBiometric();
+        // Biometric enabled but not available right now (timing issue or device change)
+        // Allow access without changing stored preference - user can disable in Settings
         if (mounted) {
           setState(() {
             _isAuthenticated = true;
             _isAuthenticating = false;
+          });
+          // Show message after frame is built
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Biometric authentication unavailable - you can disable it in Settings'),
+                  backgroundColor: Colors.orange,
+                  duration: Duration(seconds: 4),
+                ),
+              );
+            }
           });
         }
         return;

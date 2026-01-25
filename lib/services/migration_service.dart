@@ -8,16 +8,21 @@ class MigrationService {
 
   /// Check and run migrations if app version has changed
   static Future<void> checkAndMigrate() async {
-    final prefs = await SharedPreferences.getInstance();
-    final packageInfo = await PackageInfo.fromPlatform();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final packageInfo = await PackageInfo.fromPlatform();
 
-    final currentVersion = packageInfo.version;
-    final storedVersion = prefs.getString(_versionKey);
+      final currentVersion = packageInfo.version;
+      final storedVersion = prefs.getString(_versionKey);
 
-    // First install or version changed
-    if (storedVersion == null || storedVersion != currentVersion) {
-      await _runMigrations(storedVersion, currentVersion);
-      await prefs.setString(_versionKey, currentVersion);
+      // First install or version changed
+      if (storedVersion == null || storedVersion != currentVersion) {
+        await _runMigrations(storedVersion, currentVersion);
+        await prefs.setString(_versionKey, currentVersion);
+      }
+    } catch (e) {
+      // Don't crash the app if migration fails - just continue
+      // User may need to clear data manually in worst case
     }
   }
 
@@ -63,18 +68,26 @@ class MigrationService {
 
   /// Compare version strings (simple comparison)
   static bool _isVersionLessThan(String version1, String version2) {
-    final v1Parts = version1.split('.').map(int.parse).toList();
-    final v2Parts = version2.split('.').map(int.parse).toList();
+    try {
+      // Strip build number (e.g., "3.8.0+1" -> "3.8.0")
+      final v1Clean = version1.split('+').first.split('-').first;
+      final v2Clean = version2.split('+').first.split('-').first;
 
-    for (int i = 0; i < 3; i++) {
-      final v1 = i < v1Parts.length ? v1Parts[i] : 0;
-      final v2 = i < v2Parts.length ? v2Parts[i] : 0;
+      final v1Parts = v1Clean.split('.').map((s) => int.tryParse(s) ?? 0).toList();
+      final v2Parts = v2Clean.split('.').map((s) => int.tryParse(s) ?? 0).toList();
 
-      if (v1 < v2) return true;
-      if (v1 > v2) return false;
+      for (int i = 0; i < 3; i++) {
+        final v1 = i < v1Parts.length ? v1Parts[i] : 0;
+        final v2 = i < v2Parts.length ? v2Parts[i] : 0;
+
+        if (v1 < v2) return true;
+        if (v1 > v2) return false;
+      }
+
+      return false; // versions are equal
+    } catch (e) {
+      return false; // If parsing fails, assume no migration needed
     }
-
-    return false; // versions are equal
   }
 
   /// Force clear all app data (use with caution!)

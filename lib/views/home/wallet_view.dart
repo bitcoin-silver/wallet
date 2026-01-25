@@ -10,8 +10,8 @@ import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/chat_provider.dart';
 import 'package:bitcoinsilver_wallet/views/home/receive_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/send_view.dart';
-// import 'package:bitcoinsilver_wallet/views/home/addressbook_view.dart';
-// import 'package:bitcoinsilver_wallet/views/chat/chat_view.dart';
+import 'package:bitcoinsilver_wallet/views/home/addressbook_view.dart';
+import 'package:bitcoinsilver_wallet/views/chat/chat_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 import 'package:bitcoinsilver_wallet/modals/transaction_modal.dart';
 import 'package:bitcoinsilver_wallet/views/home/transactions_view.dart';
@@ -1090,13 +1090,12 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
             child: SafeArea(
               child: GestureDetector(
                 onTap: () {
-                  // Addressbook feature disabled - click does nothing
-                  // Navigator.push(
-                  //   context,
-                  //   MaterialPageRoute(
-                  //     builder: (context) => const AddressbookView(),
-                  //   ),
-                  // );
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AddressbookView(),
+                    ),
+                  );
                 },
                 child: Container(
                   padding: const EdgeInsets.all(14),
@@ -1166,13 +1165,12 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                 builder: (context, chatProvider, child) {
                   return GestureDetector(
                     onTap: () {
-                      // Chat feature disabled - click does nothing
-                      // Navigator.push(
-                      //   context,
-                      //   MaterialPageRoute(
-                      //     builder: (context) => const ChatView(),
-                      //   ),
-                      // );
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ChatView(),
+                        ),
+                      );
                     },
                     child: Container(
                       padding: const EdgeInsets.all(14),
