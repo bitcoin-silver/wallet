@@ -13,7 +13,11 @@ import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
 class WalletService {
   final BaseXCodec base58 =
       BaseXCodec('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
-  final RpcConfigService _rpcConfig = RpcConfigService();
+  final RpcConfigService _rpcConfig;
+
+  WalletService(this._rpcConfig);
+
+  RpcConfigService get rpcConfigService => _rpcConfig;
 
   String? generatePrivateKey() {
     String? key;
@@ -112,13 +116,23 @@ class WalletService {
     return true;
   }
 
-  Future<Map<String, dynamic>?> rpcRequest(String method, [List<dynamic>? params]) async {
-    final rpcUrl = await _rpcConfig.getRpcUrl();
-    final rpcUser = await _rpcConfig.getRpcUser();
-    final rpcPassword = await _rpcConfig.getRpcPassword();
+  Future<Map<String, dynamic>?> rpcRequest(
+    String method,
+    [List<dynamic>? params,
+  ]) async {
+    final rpcUrl = _rpcConfig.getActiveRpcUrl();
+    final rpcUser = _rpcConfig.getActiveRpcUser();
+    final rpcPassword = _rpcConfig.getActiveRpcPassword();
 
-    final auth = 'Basic ${base64Encode(utf8.encode('$rpcUser:$rpcPassword'))}';
-    final headers = {'Content-Type': 'application/json', 'Authorization': auth};
+    if (rpcUrl == null || rpcUrl.isEmpty) {
+      throw Exception('Active RPC URL not set');
+    }
+
+    Map<String, String> headers = {'Content-Type': 'application/json'};
+    if (rpcUser != null && rpcUser.isNotEmpty && rpcPassword != null && rpcPassword.isNotEmpty) {
+      final auth = 'Basic ${base64Encode(utf8.encode('$rpcUser:$rpcPassword'))}';
+      headers['Authorization'] = auth;
+    }
 
     final body = jsonEncode({
       'jsonrpc': '1.0',
@@ -144,15 +158,22 @@ class WalletService {
     return decoded; // ✅ Always return the parsed body
   }
 
-  // Batch RPC request - send multiple requests in one HTTP call
   Future<List<Map<String, dynamic>?>> batchRpcRequest(
-      List<Map<String, dynamic>> requests) async {
-    final rpcUrl = await _rpcConfig.getRpcUrl();
-    final rpcUser = await _rpcConfig.getRpcUser();
-    final rpcPassword = await _rpcConfig.getRpcPassword();
+      List<Map<String, dynamic>> requests,
+  ) async {
+    final rpcUrl = _rpcConfig.getActiveRpcUrl();
+    final rpcUser = _rpcConfig.getActiveRpcUser();
+    final rpcPassword = _rpcConfig.getActiveRpcPassword();
 
-    final auth = 'Basic ${base64Encode(utf8.encode('$rpcUser:$rpcPassword'))}';
-    final headers = {'Content-Type': 'application/json', 'Authorization': auth};
+    if (rpcUrl == null || rpcUrl.isEmpty) {
+      throw Exception('Active RPC URL not set');
+    }
+
+    Map<String, String> headers = {'Content-Type': 'application/json'};
+    if (rpcUser != null && rpcUser.isNotEmpty && rpcPassword != null && rpcPassword.isNotEmpty) {
+      final auth = 'Basic ${base64Encode(utf8.encode('$rpcUser:$rpcPassword'))}';
+      headers['Authorization'] = auth;
+    }
 
     // Build batch request body
     final batchBody = requests

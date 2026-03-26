@@ -19,13 +19,14 @@ import '../../models/addressbook_entry.dart';
 import 'dart:async';
 
 class ChatView extends StatefulWidget {
-  const ChatView({super.key});
+  final bool showBackButton;
+  const ChatView({super.key, this.showBackButton = true});
 
   @override
   State<ChatView> createState() => _ChatViewState();
 }
 
-class _ChatViewState extends State<ChatView> {
+class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
@@ -34,11 +35,11 @@ class _ChatViewState extends State<ChatView> {
   bool _showScrollButton = false;
   ChatProvider? _chatProvider;
   bool _initialScrollDone = false;
-  double _previousKeyboardHeight = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // Initialize chat
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -52,27 +53,38 @@ class _ChatViewState extends State<ChatView> {
     _messageFocusNode.addListener(_onFocusChange);
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _messageController.dispose();
+    _scrollController.dispose();
+    _messageFocusNode.dispose();
+    _typingTimer?.cancel();
+
+    // Schedule markChatAsClosed to run after dispose completes
+    Future.microtask(() {
+      _chatProvider?.markChatAsClosed();
+    });
+
+    super.dispose();
+  }
+
   void _onFocusChange() {
-    // When focus changes, scroll to bottom after a short delay
-    // to allow keyboard animation to complete
-    if (_messageFocusNode.hasFocus) {
-      Future.delayed(Duration(milliseconds: 300), () {
-        if (mounted && _scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-    }
+    // System handles scrolling naturally when focus changes
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Store reference to ChatProvider for safe access in dispose
     _chatProvider ??= Provider.of<ChatProvider>(context, listen: false);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('ChatView: App resumed, re-initializing chat...');
+      _initializeChat();
+    }
   }
 
   void _initializeChat() async {
@@ -84,45 +96,42 @@ class _ChatViewState extends State<ChatView> {
       return;
     }
 
-    // Check if user has a username in addressbook
+    final walletAddress = walletProvider.address!;
+
+    // 1. Try to find nickname locally first
+    String? nickname;
     try {
-      final addressbookEntry = await addressbookProvider.searchByAddress(walletProvider.address!);
-
+      final addressbookEntry = await addressbookProvider.searchByAddress(walletAddress);
       if (addressbookEntry != null && addressbookEntry.username.isNotEmpty) {
-        // User has a username - connect with it
-        if (!chatProvider.isConnected) {
-          await chatProvider.connect(
-            walletProvider.address!,
-            nickname: addressbookEntry.username,
-          );
-        }
-
-        // Reload chat history when entering chat
-        await chatProvider.loadHistory();
-      } else {
-        // User doesn't have a username - prompt to register
-        if (mounted) {
-          _showUsernamePrompt();
-          return;
-        }
+        nickname = addressbookEntry.username;
+        debugPrint('✅ Found nickname locally: $nickname');
       }
     } catch (e) {
-      // Error checking username - might not be registered
+      debugPrint('⚠️ Error checking local addressbook: $e');
+    }
+
+    // 2. Connect (this will try to fetch nickname from server if nickname is null)
+    if (!chatProvider.isConnected) {
+      await chatProvider.connect(walletAddress, nickname: nickname);
+    }
+
+    // 3. Check if we finally have a nickname
+    if (chatProvider.currentNickname == null || chatProvider.currentNickname!.isEmpty) {
+      // Still no nickname, maybe it's in the addressbook backend but not local?
+      // (This is redundant if searchByAddress already checked backend, but let's be sure)
       if (mounted) {
         _showUsernamePrompt();
         return;
       }
     }
 
-    // Use microtask to avoid calling setState during build
+    // Reload chat history
+    await chatProvider.loadHistory(forceRefresh: true);
+
     if (mounted) {
-      Future.microtask(() {
-        if (mounted) {
-          chatProvider.markChatAsOpened();
-          // Scroll to bottom after marking chat as opened
-          _performInitialScroll();
-        }
-      });
+      chatProvider.markChatAsOpened();
+      // Scroll to bottom (index 0 with reverse: true)
+      _performInitialScroll();
     }
   }
 
@@ -130,16 +139,15 @@ class _ChatViewState extends State<ChatView> {
   void _performInitialScroll() {
     if (_initialScrollDone) return;
 
-    // Wait for the list to be fully built, then scroll
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
 
-      // Try scrolling after a short delay to ensure layout is complete
       Future.delayed(Duration(milliseconds: 100), () {
         if (!mounted || !_scrollController.hasClients) return;
 
         try {
-          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+          // With reverse: true, 0 is the bottom
+          _scrollController.jumpTo(0);
           _initialScrollDone = true;
           debugPrint('✅ Initial scroll to bottom completed');
         } catch (e) {
@@ -216,9 +224,8 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _onScroll() {
-    // Show scroll-to-bottom button if not at bottom
-    final isAtBottom = _scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 100;
+    // With reverse: true, position.pixels is distance from bottom
+    final isAtBottom = _scrollController.position.pixels <= 100;
 
     if (_showScrollButton != !isAtBottom) {
       setState(() {
@@ -226,8 +233,8 @@ class _ChatViewState extends State<ChatView> {
       });
     }
 
-    // Load more messages when scrolling to top
-    if (_scrollController.position.pixels <= 100) {
+    // Load more messages when scrolling to top (maxScrollExtent with reverse: true)
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 100) {
       _loadMoreMessages();
     }
   }
@@ -236,7 +243,7 @@ class _ChatViewState extends State<ChatView> {
     if (!_scrollController.hasClients) return;
 
     _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent,
+      0,
       duration: Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
@@ -259,17 +266,18 @@ class _ChatViewState extends State<ChatView> {
     _messageController.clear();
     _stopTyping();
 
-    // Scroll to bottom after sending message
-    Future.delayed(Duration(milliseconds: 200), () {
+    // Scroll to bottom (0) after sending message
+    Future.delayed(Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          0,
           duration: Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
       }
     });
   }
+
 
   void _onTextChanged(String text) {
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
@@ -293,48 +301,9 @@ class _ChatViewState extends State<ChatView> {
   }
 
   @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    _messageFocusNode.dispose();
-    _typingTimer?.cancel();
-
-    // Schedule markChatAsClosed to run after dispose completes
-    // This avoids calling notifyListeners during widget tree disposal
-    Future.microtask(() {
-      _chatProvider?.markChatAsClosed();
-    });
-
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // Get keyboard height
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-
-    // Detect keyboard visibility changes and auto-scroll
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (keyboardHeight != _previousKeyboardHeight) {
-        _previousKeyboardHeight = keyboardHeight;
-
-        // If keyboard is appearing (height > 0), scroll to bottom
-        if (keyboardHeight > 0 && _scrollController.hasClients) {
-          Future.delayed(Duration(milliseconds: 100), () {
-            if (mounted && _scrollController.hasClients) {
-              _scrollController.animateTo(
-                _scrollController.position.maxScrollExtent,
-                duration: Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-              );
-            }
-          });
-        }
-      }
-    });
-
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: true, // System handles push-up naturally
       body: AppBackground(
         child: SafeArea(
           child: Column(
@@ -343,7 +312,7 @@ class _ChatViewState extends State<ChatView> {
               Expanded(
                 child: _buildMessagesList(),
               ),
-              _buildMessageInput(keyboardHeight),
+              _buildMessageInput(),
             ],
           ),
         ),
@@ -372,12 +341,14 @@ class _ChatViewState extends State<ChatView> {
           ),
           child: Row(
             children: [
-              // Back button
-              IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-              const SizedBox(width: 12),
+              // Back button (only shown if requested and can pop)
+              if (widget.showBackButton && Navigator.of(context).canPop())
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              if (widget.showBackButton && Navigator.of(context).canPop())
+                const SizedBox(width: 12),
               // Chat info
               Expanded(
                 child: Column(
@@ -476,15 +447,19 @@ class _ChatViewState extends State<ChatView> {
           );
         }
 
+        // Initial scroll is handled by _performInitialScroll when the chat loads.
+        // We removed the auto-scroll callback from here as it was interfering with manual scrolling.
+
         return Stack(
           children: [
             ListView.builder(
               controller: _scrollController,
+              reverse: true,
               padding: const EdgeInsets.only(
                 left: 16,
                 right: 16,
                 top: 16,
-                bottom: 80, // Extra padding to ensure last message is visible above input
+                bottom: 16,
               ),
               itemCount: chatProvider.messages.length,
               itemBuilder: (context, index) {
@@ -702,15 +677,9 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  Widget _buildMessageInput(double keyboardHeight) {
-    return AnimatedContainer(
-      duration: Duration(milliseconds: 100),
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: 16,
-      ),
+  Widget _buildMessageInput() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
@@ -901,9 +870,14 @@ class _ChatViewState extends State<ChatView> {
               final addressbookProvider =
                   Provider.of<AddressbookProvider>(context, listen: false);
 
+              // Strip @ symbol if present
+              final cleanUsername = displayName.startsWith('@') 
+                  ? displayName.substring(1) 
+                  : displayName;
+
               // Create address book entry
               final entry = AddressbookEntry(
-                username: displayName,
+                username: cleanUsername,
                 address: message.walletAddress,
                 isFavorite: true,
               );

@@ -4,22 +4,18 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bitcoinsilver_wallet/services/wallet_service.dart';
 import 'package:bitcoinsilver_wallet/services/notification_service.dart';
+import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
 
 // Backend URL - HTTPS endpoint
 const String backendUrl = 'https://btcs-vps13.duckdns.org';
 
 class WalletProvider with ChangeNotifier {
-  // New storage with encryptedSharedPreferences for better Android compatibility
-  final FlutterSecureStorage _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(
-      encryptedSharedPreferences: true,
-    ),
-  );
-  // Legacy storage for migration from old versions
-  final FlutterSecureStorage _legacyStorage = const FlutterSecureStorage();
-  final WalletService _ws = WalletService();
+  // Use default storage (compatible with Play Store signing)
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final WalletService _ws;
   late NotificationService _notificationService;
   Function(String address)? _onTransactionTapped;
+  Function()? _onChatMessageTapped;
 
   String? _privateKey;
   String? _address;
@@ -31,6 +27,16 @@ class WalletProvider with ChangeNotifier {
   DateTime? _lastFetch;
   bool _isCurrentlySending = false;
   DateTime? _lastSendAttempt;
+  String? _rpcError; // New field to store RPC connection errors
+
+  // Getter for RPC error
+  String? get rpcError => _rpcError;
+
+  // Setter for RPC error
+  void setRpcError(String? error) {
+    _rpcError = error;
+    notifyListeners();
+  }
 
   // Pending transaction tracking
   final Set<String> _pendingTxids = {};
@@ -47,6 +53,8 @@ class WalletProvider with ChangeNotifier {
   String? get lastError => _lastError;
   bool get hasPendingTransactions => _pendingTransactions.isNotEmpty;
   int get pendingTransactionsCount => _pendingTransactions.length;
+
+  WalletService get walletService => _ws; // Public getter for WalletService
 
   // Display balance - shows actual spendable balance considering consumed UTXOs
   double? get displayBalance {
@@ -70,11 +78,12 @@ class WalletProvider with ChangeNotifier {
       _pendingTransactions.values.toList()
         ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-  WalletProvider() {
+  WalletProvider(RpcConfigService rpcConfigService) : _ws = WalletService(rpcConfigService) {
     _notificationService = NotificationService(
       backendUrl: backendUrl,
       onTransactionReceived: _handleTransactionReceived,
       onNotificationTapped: _handleNotificationTapped,
+      onChatMessageReceived: _handleChatMessageReceived,
     );
   }
 
@@ -108,9 +117,23 @@ class WalletProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Handle chat message notification tap
+  void _handleChatMessageReceived(Map<String, dynamic> data) {
+    debugPrint('💬 Chat message notification received in WalletProvider');
+    if (_onChatMessageTapped != null) {
+      _onChatMessageTapped!();
+    }
+    notifyListeners();
+  }
+
   /// Set callback for transaction refresh (called from main.dart)
   void setTransactionRefreshCallback(Function(String address) callback) {
     _onTransactionTapped = callback;
+  }
+
+  /// Set callback for chat message tap (called from main.dart)
+  void setChatMessageRefreshCallback(Function() callback) {
+    _onChatMessageTapped = callback;
   }
 
   Future<void> loadWallet() async {
@@ -118,30 +141,11 @@ class WalletProvider with ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
-      // Try new storage first (with timeout to prevent hang)
+      // Read with timeout to prevent hang on corrupted keystore
       _privateKey = await _storage.read(key: 'key').timeout(
         const Duration(seconds: 5),
         onTimeout: () => null,
       );
-
-      // If not found, try legacy storage and migrate
-      if (_privateKey == null) {
-        try {
-          final legacyKey = await _legacyStorage.read(key: 'key').timeout(
-            const Duration(seconds: 5),
-            onTimeout: () => null,
-          );
-          if (legacyKey != null) {
-            // Migrate to new storage
-            _privateKey = legacyKey;
-            await _storage.write(key: 'key', value: legacyKey);
-            await _legacyStorage.delete(key: 'key');
-            debugPrint('✓ Migrated wallet key to new storage');
-          }
-        } catch (e) {
-          debugPrint('Legacy storage read failed: $e');
-        }
-      }
 
       if (_privateKey != null) {
         _address = _ws.loadAddressFromKey(_privateKey!);
@@ -444,7 +448,7 @@ class WalletProvider with ChangeNotifier {
     }
 
     // Sort UTXOs by amount (largest first)
-    _utxos.sort((a, b) => (b['amount'] as double).compareTo(a['amount'] as double));
+    _utxos.sort((a, b) => (b['amount'] as num).toDouble().compareTo((a['amount'] as num).toDouble()));
 
     // Get fee rate
     double feeRate = feeRateOverride ?? 0.00001;

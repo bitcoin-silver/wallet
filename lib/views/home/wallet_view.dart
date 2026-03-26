@@ -1168,7 +1168,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const ChatView(),
+                          builder: (context) => const ChatView(showBackButton: true),
                         ),
                       );
                     },

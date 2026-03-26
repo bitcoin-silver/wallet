@@ -198,8 +198,8 @@ class _SendViewState extends State<SendView> {
 
       // Handle insufficient fee error
       if (result['suggestedFeeRate'] != null) {
-        final suggestedFeeRate = result['suggestedFeeRate'] as double;
-        final currentFeeRate = result['currentFeeRate'] ?? 0.00001;
+        final suggestedFeeRate = (result['suggestedFeeRate'] as num).toDouble();
+        final currentFeeRate = (result['currentFeeRate'] as num?)?.toDouble() ?? 0.00001;
 
         if (mounted) {
           final shouldRetry = await _showFeeDialog(currentFeeRate, suggestedFeeRate);

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:bitcoinsilver_wallet/services/wallet_service.dart';
 import 'package:bitcoinsilver_wallet/services/biometric_service.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
@@ -10,11 +9,12 @@ class SetupView extends StatelessWidget {
   SetupView({super.key});
 
   final TextEditingController _recoverController = TextEditingController();
-  final WalletService _walletService = WalletService();
   final BiometricService _biometricService = BiometricService();
 
   Future<void> _processWallet(BuildContext context, String privateKey, {bool isNewWallet = false}) async {
-    final address = _walletService.loadAddressFromKey(privateKey);
+    final wp = Provider.of<WalletProvider>(context, listen: false);
+    final walletService = wp.walletService;
+    final address = walletService.loadAddressFromKey(privateKey);
     if (address != null) {
       // Show private key dialog for new wallets
       if (isNewWallet) {
@@ -31,7 +31,6 @@ class SetupView extends StatelessWidget {
       }
 
       if (!context.mounted) return;
-      final wp = Provider.of<WalletProvider>(context, listen: false);
       await wp.saveWallet(address, privateKey);
 
       // Fetch UTXOs before loading blockchain
@@ -306,7 +305,8 @@ class SetupView extends StatelessWidget {
   }
 
   Future<void> _generateWallet(BuildContext context) async {
-    final privateKey = _walletService.generatePrivateKey();
+    final wp = Provider.of<WalletProvider>(context, listen: false);
+    final privateKey = wp.walletService.generatePrivateKey();
     if (privateKey != null) {
       await _processWallet(context, privateKey, isNewWallet: true);
     } else {

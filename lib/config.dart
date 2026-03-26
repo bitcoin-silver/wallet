@@ -10,6 +10,10 @@ class Config {
   static const String rpcUser = String.fromEnvironment('RPC_USER', defaultValue: '');
   static const String rpcPassword = String.fromEnvironment('RPC_PASSWORD', defaultValue: '');
 
+  static const String secondaryRpcUrl = String.fromEnvironment('SECONDARY_RPC_URL', defaultValue: '');
+  static const String secondaryRpcUser = String.fromEnvironment('SECONDARY_RPC_USER', defaultValue: '');
+  static const String secondaryRpcPassword = String.fromEnvironment('SECONDARY_RPC_PASSWORD', defaultValue: '');
+
   static const String explorerUrl =
       'https://explorer.bitcoinsilver.top';
   static const String getAddressTxsEndpoint = '/ext/getaddress';

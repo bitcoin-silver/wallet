@@ -6,12 +6,11 @@
 // ================================================================================
 
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/chat_service.dart';
 import '../services/chat_notification_service.dart';
 
-class ChatProvider with ChangeNotifier {
+class ChatProvider with ChangeNotifier, WidgetsBindingObserver {
   final ChatService _chatService = ChatService();
   final ChatNotificationService _notificationService = ChatNotificationService();
   final List<ChatMessage> _messages = [];
@@ -35,6 +34,25 @@ class ChatProvider with ChangeNotifier {
 
   ChatProvider() {
     _initialize();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('ChatProvider: App resumed, checking connection and refreshing messages...');
+      
+      // If we have an address, try to reconnect if disconnected
+      if (_currentWalletAddress != null) {
+        // Always refresh history on resume to get missed messages from REST API
+        loadHistory(forceRefresh: true);
+
+        if (!_isConnected) {
+          debugPrint('ChatProvider: Reconnecting WebSocket on resume...');
+          connect(_currentWalletAddress!, nickname: _currentNickname);
+        }
+      }
+    }
   }
 
   void _initialize() {
@@ -43,7 +61,14 @@ class ChatProvider with ChangeNotifier {
 
     // Listen to message stream
     _messageSubscription = _chatService.messages.listen((message) {
-      _messages.add(message);
+      // Avoid duplicates by checking ID
+      if (message.id != null && _messages.any((m) => m.id == message.id)) {
+        debugPrint('ChatProvider: Skipping duplicate message with ID ${message.id}');
+        return;
+      }
+
+      // With reverse: true in ListView, newest message should be at index 0
+      _messages.insert(0, message);
 
       // Handle notifications and unread count if chat is not open
       if (!_isChatOpen && message.walletAddress != _currentWalletAddress) {
@@ -72,9 +97,9 @@ class ChatProvider with ChangeNotifier {
       // Schedule notifyListeners to avoid calling during build
       Future.microtask(() => notifyListeners());
 
-      // Request history when connected
-      if (connected && _messages.isEmpty) {
-        loadHistory();
+      // Always request history when connected to ensure we have latest messages
+      if (connected) {
+        loadHistory(forceRefresh: true);
       }
     });
   }
@@ -87,6 +112,7 @@ class ChatProvider with ChangeNotifier {
     // Try to load nickname from server if not provided
     if (nickname == null) {
       _currentNickname = await _chatService.getNickname(walletAddress);
+      debugPrint('ChatProvider: Fetched nickname from server: $_currentNickname');
     }
 
     await _chatService.connect(walletAddress, nickname: _currentNickname);
@@ -147,14 +173,14 @@ class ChatProvider with ChangeNotifier {
   }
 
   /// Load message history (limited to last 200 messages to prevent network overhead)
-  Future<void> loadHistory() async {
+  Future<void> loadHistory({bool forceRefresh = false}) async {
     if (_isLoading) {
       debugPrint('Already loading history, skipping duplicate request');
       return;
     }
 
-    // Prevent duplicate loads within 2 seconds
-    if (_messages.isNotEmpty) {
+    // Prevent duplicate loads unless forced
+    if (!forceRefresh && _messages.isNotEmpty) {
       debugPrint('History already loaded, skipping duplicate request');
       return;
     }
@@ -167,11 +193,33 @@ class ChatProvider with ChangeNotifier {
       // Load only the last 200 messages to prevent excessive network usage
       final history = await _chatService.fetchHistory(limit: 200);
 
-      // Clear current messages and add history
-      _messages.clear();
-      _messages.addAll(history);
+      if (history.isEmpty) return;
 
-      debugPrint('Chat history loaded: ${history.length} messages (max 200)');
+      // Intelligent merging:
+      // 1. Create a map of existing message IDs for fast lookup
+      final existingIds = _messages
+          .where((m) => m.id != null)
+          .map((m) => m.id!)
+          .toSet();
+
+      // 2. Filter history to only include messages we don't already have
+      final newMessages = history.where((m) => m.id == null || !existingIds.contains(m.id)).toList();
+
+      if (newMessages.isNotEmpty) {
+        // 3. Add new messages and sort by timestamp (newest first for reverse: true)
+        _messages.addAll(newMessages);
+        _messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        
+        // 4. Keep only last 300 messages to manage memory
+        if (_messages.length > 300) {
+          _messages.removeRange(300, _messages.length);
+        }
+        
+        debugPrint('Chat history merged: ${newMessages.length} new messages added');
+      } else {
+        debugPrint('Chat history: No new messages to add');
+      }
+      
       notifyListeners();
     } catch (error) {
       debugPrint('Error loading history: $error');
@@ -196,8 +244,12 @@ class ChatProvider with ChangeNotifier {
       );
 
       if (moreMessages.isNotEmpty) {
-        // Insert at beginning (older messages)
-        _messages.insertAll(0, moreMessages);
+        // Append at the end (older messages appear at the top of the scrolled list with reverse: true)
+        _messages.addAll(moreMessages);
+        
+        // Ensure they are still sorted correctly (newest first)
+        _messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        
         notifyListeners();
       }
     } catch (error) {
@@ -266,6 +318,7 @@ class ChatProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _messageSubscription?.cancel();
     _connectionSubscription?.cancel();
     _chatService.dispose();

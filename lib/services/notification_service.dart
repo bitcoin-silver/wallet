@@ -28,6 +28,7 @@ class NotificationService {
   // Callbacks for handling notifications
   Function(String txid, String amount, String address)? onTransactionReceived;
   Function(String txid)? onNotificationTapped;
+  Function(Map<String, dynamic> data)? onChatMessageReceived;
 
   static bool _initialized = false;
   static bool _isInitializing = false;
@@ -36,6 +37,7 @@ class NotificationService {
     required this.backendUrl,
     this.onTransactionReceived,
     this.onNotificationTapped,
+    this.onChatMessageReceived,
   });
 
   /// Check if we need to register (token or address changed)
@@ -356,20 +358,29 @@ class NotificationService {
       if (txid != null && amount != null && address != null && confirmations >= 1) {
         onTransactionReceived?.call(txid, amount, address);
       }
+    } else if (message.data['type'] == 'chat_message') {
+      debugPrint('💬 Chat message received in foreground');
+      onChatMessageReceived?.call(message.data);
     }
   }
 
   /// Handle notification tap
   void _handleNotificationTap(RemoteMessage message) {
     debugPrint('User tapped notification');
+    debugPrint('Tap Data: ${message.data}');
 
-    String? txid = message.data['txid'];
     String? type = message.data['type'];
 
-    if (type == 'incoming_tx' && txid != null) {
-      // Trigger callback to navigate to transaction details
-      debugPrint('Navigate to transaction: $txid');
-      onNotificationTapped?.call(txid);
+    if (type == 'incoming_tx') {
+      String? txid = message.data['txid'];
+      if (txid != null) {
+        // Trigger callback to navigate to transaction details
+        debugPrint('Navigate to transaction: $txid');
+        onNotificationTapped?.call(txid);
+      }
+    } else if (type == 'chat_message') {
+      debugPrint('Navigate to chat from push notification');
+      onChatMessageReceived?.call(message.data);
     }
   }
 

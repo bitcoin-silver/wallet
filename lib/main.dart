@@ -46,14 +46,11 @@ void main() async {
     SystemUiMode.edgeToEdge,
   );
 
-  // Add system UI customization with edge-to-edge support
+  // Add basic system UI customization
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light, // Light icons on dark background
       systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarIconBrightness: Brightness.light,
-      systemNavigationBarContrastEnforced: false,
     ),
   );
 
@@ -61,17 +58,63 @@ void main() async {
   // (tablets, foldables) as required by Android 16+
   // The app now supports all orientations for better user experience
 
-  // Initialize providers with error handling
-  final wp = WalletProvider();
+  // Initialize providers
+  final wp = WalletProvider(rpcConfig);
   final bp = BlockchainProvider();
 
   // Link providers - so notification taps refresh transactions
   wp.setTransactionRefreshCallback((address) => bp.loadBlockchain(address));
+  wp.setChatMessageRefreshCallback(() {
+    // Navigate to chat when notification is tapped
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (context) => const ChatView(showBackButton: true),
+      ),
+    );
+  });
 
-  // Load wallet and data synchronously
+  // --- RPC Selection Logic ---
+  try {
+    bool rpcConnected = false;
+
+    // Attempt to set primary RPC as active and test connectivity
+    if (await rpcConfig.primaryRpcCredentialsConfigured()) { // Check if primary RPC is even configured
+      await rpcConfig.setActiveRpcPrimary();
+      try {
+        await wp.walletService.rpcRequest('getblockchaininfo'); // Test primary RPC
+        rpcConnected = true;
+      } catch (e) {
+        // Primary failed
+      }
+    }
+
+    if (!rpcConnected) {
+      // Primary failed or not configured, try secondary
+      final secondaryUrl = await rpcConfig.getSecondaryRpcUrl();
+      if (secondaryUrl != null && secondaryUrl.isNotEmpty) {
+        await rpcConfig.setActiveRpcSecondary();
+        try {
+          await wp.walletService.rpcRequest('getblockchaininfo'); // Test secondary RPC
+          rpcConnected = true;
+        } catch (secondaryE) {
+          // Secondary failed
+        }
+      }
+    }
+
+    if (!rpcConnected) {
+      wp.setRpcError('Failed to connect to any RPC server. Please check your network connection or RPC configuration.');
+    } else {
+      wp.setRpcError(null); // Clear any previous RPC errors
+    }
+  } catch (e) {
+    wp.setRpcError('An unexpected error occurred during RPC setup: $e');
+  }
+
+  // Load wallet and data synchronously after RPC selection
   try {
     await wp.loadWallet();
-    if (wp.address != null) {
+    if (wp.address != null && wp.rpcError == null) { // Only fetch UTXOs if RPC connected
       await wp.fetchUtxos(force: true);
       await bp.loadBlockchain(wp.address);
     }
@@ -99,7 +142,7 @@ void main() async {
     // Navigate to chat when notification is tapped
     navigatorKey.currentState?.push(
       MaterialPageRoute(
-        builder: (context) => const ChatView(),
+        builder: (context) => const ChatView(showBackButton: true),
       ),
     );
   };

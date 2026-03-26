@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bitcoinsilver_wallet/models/addressbook_entry.dart';
 import 'package:bitcoinsilver_wallet/services/addressbook_service.dart';
+import 'package:bitcoinsilver_wallet/services/chat_service.dart';
 
 class AddressbookProvider with ChangeNotifier {
+  final ChatService _chatService = ChatService();
   List<AddressbookEntry> _favorites = [];
   List<AddressbookEntry> _recentSearches = [];
   bool _isLoading = false;
@@ -83,10 +85,22 @@ class AddressbookProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      // 1. Register with Addressbook backend
       final success = await AddressbookService.registerUsername(
         username: username,
         address: address,
       );
+
+      if (success) {
+        // 2. Also register with Chat backend to keep them in sync
+        try {
+          await _chatService.setNickname(username, walletAddress: address);
+          debugPrint('✅ Also registered nickname in Chat backend');
+        } catch (chatError) {
+          debugPrint('⚠️ Failed to register nickname in Chat backend: $chatError');
+          // We don't fail the whole registration if chat backend fails
+        }
+      }
 
       _isLoading = false;
       notifyListeners();

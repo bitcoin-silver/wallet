@@ -51,6 +51,23 @@ class ChatMessage {
     };
   }
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ChatMessage &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          walletAddress == other.walletAddress &&
+          message == other.message &&
+          timestamp == other.timestamp;
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      walletAddress.hashCode ^
+      message.hashCode ^
+      timestamp.hashCode;
+
   bool get isSystem => messageType == 'system';
   bool get isUser => messageType == 'user';
 }
@@ -200,6 +217,10 @@ class ChatService {
           debugPrint('Active users: ${json['activeUsers']}');
           break;
 
+        case 'pong':
+          // Ping-pong successful
+          break;
+
         case 'error':
           debugPrint('Server error: ${json['message']}');
           break;
@@ -272,6 +293,8 @@ class ChatService {
           _channel!.sink.add(jsonEncode({'type': 'ping'}));
         } catch (error) {
           debugPrint('Ping error: $error');
+          // If ping fails, the connection is likely dead
+          _onDisconnect();
         }
       }
     });
@@ -382,8 +405,14 @@ class ChatService {
   }
 
   /// Set user nickname
-  Future<bool> setNickname(String nickname) async {
+  Future<bool> setNickname(String nickname, {String? walletAddress}) async {
     try {
+      final address = walletAddress ?? _walletAddress;
+      if (address == null) {
+        debugPrint('Error setting nickname: No wallet address available');
+        return false;
+      }
+
       final url = '${Config.apiBaseUrl}/api/chat/set-nickname';
       final response = await http.post(
         Uri.parse(url),
@@ -392,7 +421,7 @@ class ChatService {
           'X-API-Key': Config.apiKey,
         },
         body: jsonEncode({
-          'wallet_address': _walletAddress,
+          'wallet_address': address,
           'nickname': nickname,
         }),
       );
@@ -444,7 +473,7 @@ class ChatService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success']) {
-          final price = data['price'] as double;
+          final price = (data['price'] as num).toDouble();
           // Format price nicely
           final formattedPrice = price < 0.01
               ? price.toStringAsFixed(8)
