@@ -34,15 +34,25 @@ class MainActivity: FlutterFragmentActivity() {
             }
             val priceAlertChannel = NotificationChannel(
                 "btcs_price_alerts",
-                "BTCS Price Alerts",
+                "Bitcoin Silver Price Alerts",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Notifications for significant BTCS price changes"
                 enableVibration(true)
                 enableLights(true)
             }
+            val chatChannel = NotificationChannel(
+                "chat_messages",
+                "Chat Messages",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications for new chat messages"
+                enableVibration(true)
+                enableLights(true)
+            }
             notificationManager.createNotificationChannel(transactionChannel)
             notificationManager.createNotificationChannel(priceAlertChannel)
+            notificationManager.createNotificationChannel(chatChannel)
         }
     }
 }

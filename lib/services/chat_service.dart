@@ -19,6 +19,9 @@ class ChatMessage {
   final String message;
   final DateTime timestamp;
   final String messageType;
+  final String? replyToId; // ID of the message being replied to
+  final String? replyToText; // Snippet of the message being replied to
+  final String? replyToUser; // User being replied to
 
   ChatMessage({
     this.id,
@@ -27,6 +30,9 @@ class ChatMessage {
     required this.message,
     required this.timestamp,
     this.messageType = 'user',
+    this.replyToId,
+    this.replyToText,
+    this.replyToUser,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -37,6 +43,9 @@ class ChatMessage {
       message: json['message'] ?? '',
       timestamp: DateTime.parse(json['timestamp']),
       messageType: json['message_type'] ?? 'user',
+      replyToId: json['reply_to_id']?.toString(),
+      replyToText: json['reply_to_text'],
+      replyToUser: json['reply_to_user'],
     );
   }
 
@@ -48,6 +57,9 @@ class ChatMessage {
       'message': message,
       'timestamp': timestamp.toIso8601String(),
       'message_type': messageType,
+      if (replyToId != null) 'reply_to_id': replyToId,
+      if (replyToText != null) 'reply_to_text': replyToText,
+      if (replyToUser != null) 'reply_to_user': replyToUser,
     };
   }
 
@@ -78,12 +90,17 @@ class ChatService {
   final _connectionController = StreamController<bool>.broadcast();
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
   final _statusMessageController = StreamController<String>.broadcast();
+  final _userCountController = StreamController<int>.broadcast();
+  final _serverSystemMessageController = StreamController<String?>.broadcast();
+  final _historyController = StreamController<List<ChatMessage>>.broadcast();
 
   Timer? _reconnectTimer;
   Timer? _pingTimer;
   bool _isConnecting = false;
   bool _isConnected = false;
   int _reconnectAttempts = 0;
+  int _userCount = 0;
+  String? _serverSystemMessage;
   static const int _maxReconnectAttempts = 10;
   static const Duration _reconnectDelay = Duration(seconds: 3);
 
@@ -95,8 +112,12 @@ class ChatService {
   Stream<bool> get connectionStatus => _connectionController.stream;
   Stream<Map<String, dynamic>> get typingStatus => _typingController.stream;
   Stream<String> get statusMessage => _statusMessageController.stream;
+  Stream<int> get userCountStream => _userCountController.stream;
+  Stream<String?> get serverSystemMessage => _serverSystemMessageController.stream;
+  Stream<List<ChatMessage>> get historyMessages => _historyController.stream;
 
   bool get isConnected => _isConnected;
+  int get userCount => _userCount;
 
   /// Initialize and connect to WebSocket
   Future<void> connect(String walletAddress, {String? nickname}) async {
@@ -136,14 +157,16 @@ class ChatService {
         cancelOnError: false,
       );
 
-      // Send authentication message
-      _sendAuth();
-
       _isConnected = true;
       _isConnecting = false;
       _reconnectAttempts = 0;
       _connectionController.add(true);
       _statusMessageController.add('Connected');
+      
+      debugPrint('DEBUG_WS: 🚀 WebSocket connected and ready');
+
+      // Send authentication message
+      _sendAuth();
 
       // Start ping timer to keep connection alive
       _startPingTimer();
@@ -175,14 +198,17 @@ class ChatService {
     final authMessage = {
       'type': 'auth',
       'wallet_address': _walletAddress,
+      'chat_secret': Config.chatSecret,
       if (_nickname != null) 'nickname': _nickname,
     };
 
+    debugPrint('DEBUG_WS: 📤 Sending Auth: ${jsonEncode(authMessage)}');
     _channel!.sink.add(jsonEncode(authMessage));
   }
 
   /// Handle incoming WebSocket messages
   void _onMessage(dynamic data) {
+    debugPrint('DEBUG_WS: 📥 Incoming WebSocket: $data');
     try {
       final json = jsonDecode(data.toString());
       final type = json['type'];
@@ -194,6 +220,11 @@ class ChatService {
           break;
 
         case 'system':
+          if (json['user_count'] != null) {
+            _userCount = json['user_count'];
+            _userCountController.add(_userCount);
+          }
+          
           final message = ChatMessage(
             walletAddress: 'SYSTEM',
             nickname: 'System',
@@ -213,32 +244,42 @@ class ChatService {
           break;
 
         case 'auth_success':
-          debugPrint('Authentication successful: ${json['message']}');
-          debugPrint('Active users: ${json['activeUsers']}');
+          debugPrint('DEBUG_WS: ✅ Auth Success: ${json['message']}');
+          if (json['activeUsers'] != null) {
+            _userCount = json['activeUsers'];
+            _userCountController.add(_userCount);
+          }
           break;
 
         case 'pong':
           // Ping-pong successful
+          if (json['system_message'] != null) {
+            _serverSystemMessage = json['system_message'];
+            _serverSystemMessageController.add(_serverSystemMessage);
+          } else if (json['system_message'] == null) {
+            _serverSystemMessage = null;
+            _serverSystemMessageController.add(null);
+          }
           break;
 
         case 'error':
-          debugPrint('Server error: ${json['message']}');
+          debugPrint('DEBUG_WS: ❌ Server error: ${json['message']}. Full JSON: $json');
           break;
 
         case 'history':
           final messages = (json['messages'] as List)
               .map((m) => ChatMessage.fromJson(m))
               .toList();
-          for (var message in messages) {
-            _messagesController.add(message);
-          }
+          
+          debugPrint('DEBUG_WS: 📥 Received history batch of ${messages.length} messages. Sending to history stream.');
+          _historyController.add(messages);
           break;
 
         default:
-          debugPrint('Unknown message type: $type');
+          debugPrint('DEBUG_WS: ❓ Unknown message type: $type. Full message: $json');
       }
     } catch (error) {
-      debugPrint('Error parsing WebSocket message: $error');
+      debugPrint('DEBUG_WS: 💀 Error parsing WebSocket message: $error');
     }
   }
 
@@ -256,6 +297,7 @@ class ChatService {
     _isConnected = false;
     _connectionController.add(false);
     _pingTimer?.cancel();
+    _serverSystemMessageController.add(null);
     _scheduleReconnect();
   }
 
@@ -290,9 +332,13 @@ class ChatService {
     _pingTimer = Timer.periodic(Duration(seconds: 30), (timer) {
       if (_isConnected && _channel != null) {
         try {
-          _channel!.sink.add(jsonEncode({'type': 'ping'}));
+          debugPrint('DEBUG_WS: 📤 Sending Ping');
+          _channel!.sink.add(jsonEncode({
+            'type': 'ping',
+            'chat_secret': Config.chatSecret,
+          }));
         } catch (error) {
-          debugPrint('Ping error: $error');
+          debugPrint('DEBUG_WS: 💀 Ping error: $error');
           // If ping fails, the connection is likely dead
           _onDisconnect();
         }
@@ -301,7 +347,7 @@ class ChatService {
   }
 
   /// Send a chat message
-  Future<bool> sendMessage(String message) async {
+  Future<bool> sendMessage(String message, {ChatMessage? replyTo}) async {
     if (!_isConnected || _channel == null) {
       debugPrint('Not connected to WebSocket');
       return false;
@@ -316,14 +362,21 @@ class ChatService {
       final messageData = {
         'type': 'message',
         'wallet_address': _walletAddress,
+        'chat_secret': Config.chatSecret,
         if (_nickname != null) 'nickname': _nickname,
         'message': message.trim(),
+        if (replyTo != null) ...{
+          'reply_to_id': replyTo.id?.toString(),
+          'reply_to_text': replyTo.message.length > 50 ? '${replyTo.message.substring(0, 47)}...' : replyTo.message,
+          'reply_to_user': replyTo.nickname ?? replyTo.walletAddress.substring(0, 8),
+        },
       };
 
+      debugPrint('DEBUG_WS: 📤 Sending Message: ${jsonEncode(messageData)}');
       _channel!.sink.add(jsonEncode(messageData));
       return true;
     } catch (error) {
-      debugPrint('Error sending message: $error');
+      debugPrint('DEBUG_WS: 💀 Error sending message: $error');
       return false;
     }
   }
@@ -336,6 +389,7 @@ class ChatService {
       final typingData = {
         'type': 'typing',
         'wallet_address': _walletAddress,
+        'chat_secret': Config.chatSecret,
         if (_nickname != null) 'nickname': _nickname,
         'typing': typing,
       };
@@ -353,6 +407,7 @@ class ChatService {
     try {
       final historyRequest = {
         'type': 'history',
+        'chat_secret': Config.chatSecret,
         'limit': limit,
         'offset': offset,
       };
@@ -374,6 +429,7 @@ class ChatService {
         Uri.parse(url),
         headers: {
           'X-API-Key': Config.apiKey,
+          'X-Chat-Secret': Config.chatSecret,
         },
       ).timeout(
         Duration(seconds: 10),
@@ -386,6 +442,7 @@ class ChatService {
       debugPrint('Response body: ${response.body}');
 
       if (response.statusCode == 200) {
+        debugPrint('✅ History response received');
         final data = jsonDecode(response.body);
         if (data['success']) {
           final messages = (data['messages'] as List)
@@ -419,6 +476,7 @@ class ChatService {
         headers: {
           'Content-Type': 'application/json',
           'X-API-Key': Config.apiKey,
+          'X-Chat-Secret': Config.chatSecret,
         },
         body: jsonEncode({
           'wallet_address': address,
@@ -448,6 +506,7 @@ class ChatService {
         Uri.parse(url),
         headers: {
           'X-API-Key': Config.apiKey,
+          'X-Chat-Secret': Config.chatSecret,
         },
       );
 
@@ -539,6 +598,22 @@ class ChatService {
         }
       } catch (e) {
         debugPrint('⚠️ Error closing statusMessageController: $e');
+      }
+
+      try {
+        if (!_userCountController.isClosed) {
+          _userCountController.close();
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error closing userCountController: $e');
+      }
+
+      try {
+        if (!_historyController.isClosed) {
+          _historyController.close();
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error closing historyController: $e');
       }
     }
   }

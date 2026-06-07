@@ -1,5 +1,9 @@
 {
-  "RPC_URL": "http://YOUR_RPC_URL:PORT",
-  "RPC_USER": "your_rpc_username",
-  "RPC_PASSWORD": "your_rpc_password"
+  "RPC_URL": "",
+  "RPC_USER": "",
+  "RPC_PASSWORD": "",
+  "NOTIFICATION_API_KEY": "",
+  "CHAT_SECRET": "",
+  "SECONDARY_RPC_URL": "",
+  "LIVECOINWATCH_API_KEY": ""
 }

@@ -20,9 +20,7 @@ class RpcConfigService {
 
     if (existingUrl == null) {
       // First time - check if environment variables were provided for primary RPC
-      if (Config.rpcUrl.isNotEmpty &&
-          Config.rpcUser.isNotEmpty &&
-          Config.rpcPassword.isNotEmpty) {
+      if (Config.rpcUrl.isNotEmpty) {
         // Store primary credentials from environment variables
         await _storage.write(key: _rpcUrlKey, value: Config.rpcUrl);
         await _storage.write(key: _rpcUserKey, value: Config.rpcUser);
@@ -40,15 +38,8 @@ class RpcConfigService {
   // Check if primary RPC credentials are configured
   Future<bool> primaryRpcCredentialsConfigured() async {
     final url = await _storage.read(key: _rpcUrlKey);
-    final user = await _storage.read(key: _rpcUserKey);
-    final password = await _storage.read(key: _rpcPasswordKey);
-
-    return url != null &&
-           url.isNotEmpty &&
-           user != null &&
-           user.isNotEmpty &&
-           password != null &&
-           password.isNotEmpty;
+    // User and password might be empty for secure proxy
+    return url != null && url.isNotEmpty;
   }
 
   // Get RPC URL

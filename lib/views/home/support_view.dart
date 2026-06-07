@@ -302,27 +302,47 @@ class SupportView extends StatelessWidget {
     final uri = Uri.parse(url);
 
     try {
-      // Try to launch with external application mode first
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      // Use platformDefault as primary - it's generally most compatible
+      // It will use the external app if registered (e.g. Telegram/Discord)
+      // or fall back to the default browser.
+      bool launched = await launchUrl(
+        uri,
+        mode: LaunchMode.platformDefault,
+      );
 
       if (!launched) {
-        // If external application fails, try in-app browser
-        final launchedInApp = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-
-        if (!launchedInApp) {
-          // If both fail, show error with copy option
-          if (!context.mounted) return;
-          _showLinkDialog(context, url, title);
-        }
+        // Fallback: try to force external application
+        launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
       }
-    } catch (e) {
-      // If there's an error, try platform default mode as fallback
-      try {
-        await launchUrl(uri, mode: LaunchMode.platformDefault);
-      } catch (e2) {
-        // If all methods fail, show dialog with copy option
+
+      if (!launched) {
+        // If still not launched, try in-app browser as last resort
+        launched = await launchUrl(
+          uri,
+          mode: LaunchMode.inAppBrowserView,
+        );
+      }
+
+      if (!launched) {
         if (!context.mounted) return;
         _showLinkDialog(context, url, title);
+      }
+    } catch (e) {
+      debugPrint('Error launching URL ($title): $e');
+      
+      // One final attempt with absolute default if something went wrong
+      try {
+        final fallbackLaunched = await launchUrl(uri);
+        if (!fallbackLaunched && context.mounted) {
+          _showLinkDialog(context, url, title);
+        }
+      } catch (e2) {
+        if (context.mounted) {
+          _showLinkDialog(context, url, title);
+        }
       }
     }
   }
@@ -440,14 +460,15 @@ class SupportView extends StatelessWidget {
         onTap: () async {
           final uri = Uri.parse('mailto:$email');
           try {
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            } else {
-              // No email app available, show dialog with copy option
+            // Directly try to launch the email app
+            final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+            
+            if (!launched) {
               if (!context.mounted) return;
               _showEmailDialog(context, email);
             }
           } catch (e) {
+            debugPrint('Error launching email ($email): $e');
             // Error launching email app, show dialog instead
             if (!context.mounted) return;
             _showEmailDialog(context, email);

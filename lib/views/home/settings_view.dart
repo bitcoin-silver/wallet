@@ -8,6 +8,7 @@ import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
 import 'package:bitcoinsilver_wallet/views/home/privacy_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/about_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/support_view.dart';
+import 'package:bitcoinsilver_wallet/views/home/network_info_view.dart';
 import 'package:bitcoinsilver_wallet/services/biometric_service.dart';
 import 'package:bitcoinsilver_wallet/widgets/app_background.dart';
 
@@ -327,6 +328,101 @@ class _SettingsViewState extends State<SettingsView> {
     }
   }
 
+  Future<void> _showMigrationDialog(BuildContext context, WalletProvider wp, BlockchainProvider bp) async {
+    int migrationSeedWords = 12;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Row(
+            children: [
+              Icon(Icons.auto_awesome, color: Colors.cyanAccent),
+              SizedBox(width: 8),
+              Text('Upgrade to Seed Phrase', style: TextStyle(color: Colors.white, fontSize: 18)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This will generate a new BIP39 seed phrase and move your funds to it.',
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 16),
+              const Text('Choose Phrase Length:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              Row(
+                children: [
+                  Radio<int>(
+                    value: 12,
+                    groupValue: migrationSeedWords,
+                    onChanged: (val) => setState(() => migrationSeedWords = val!),
+                    activeColor: Colors.cyanAccent,
+                  ),
+                  const Text('12 Words', style: TextStyle(color: Colors.white70)),
+                  const SizedBox(width: 20),
+                  Radio<int>(
+                    value: 24,
+                    groupValue: migrationSeedWords,
+                    onChanged: (val) => setState(() => migrationSeedWords = val!),
+                    activeColor: Colors.cyanAccent,
+                  ),
+                  const Text('24 Words', style: TextStyle(color: Colors.white70)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Note: If you have a balance, a transaction will be sent to sweep your funds to the new address. Fees will apply.',
+                style: TextStyle(color: Colors.orange, fontSize: 12, fontStyle: FontStyle.italic),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent, foregroundColor: Colors.black),
+              child: const Text('Start Migration'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true) {
+      if (!context.mounted) return;
+      
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.cyanAccent)),
+      );
+
+      final success = await wp.migrateToSeed(words: migrationSeedWords);
+
+      if (!context.mounted) return;
+      Navigator.pop(context); // Close loading indicator
+
+      if (success) {
+        await bp.loadBlockchain(wp.address);
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Migration successful!'), backgroundColor: Colors.green),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(wp.lastError ?? 'Migration failed'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   Future<void> _showDeleteWalletDialog(BuildContext context, WalletProvider wp, BlockchainProvider bp) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -478,24 +574,90 @@ class _SettingsViewState extends State<SettingsView> {
     final wp = Provider.of<WalletProvider>(context);
     final bp = Provider.of<BlockchainProvider>(context);
     final privateKey = wp.privateKey ?? '';
+    final mnemonic = wp.mnemonic;
 
     return Scaffold(
       body: AppBackground(
         child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(
               minHeight:
-                  MediaQuery.of(context).size.height - kBottomNavigationBarHeight,
+              MediaQuery.of(context).size.height - kBottomNavigationBarHeight,
             ),
             child: Padding(
-              padding: const EdgeInsets.only(top: 75, left: 16.0, right: 16.0),
+              padding: const EdgeInsets.only(top: 75, left: 16.0, right: 16.0, bottom: 130.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (mnemonic != null) ...[
+                    const Text(
+                      'Seed Phrase',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: TextEditingController(text: mnemonic),
+                      decoration: InputDecoration(
+                        labelText: 'Your 12/24 Word Phrase',
+                        labelStyle: const TextStyle(color: Colors.white),
+                        filled: true,
+                        fillColor: const Color.fromARGB(100, 0, 0, 0),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8.0),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8.0),
+                          borderSide:
+                              const BorderSide(color: Colors.white, width: 1.0),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8.0),
+                          borderSide:
+                              const BorderSide(color: Colors.white, width: 1.0),
+                        ),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.copy, color: Colors.white),
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: mnemonic));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Seed phrase copied to clipboard'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                      obscureText: true,
+                      maxLines: 1,
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Your Seed Phrase above recovers your entire wallet, including all future addresses. Keep it secure and never share it with anyone.',
+                      style: TextStyle(color: Colors.white54, fontSize: 14),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                  const Text(
+                    'Private Key (WIF)',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   TextField(
                     controller: TextEditingController(text: privateKey),
                     decoration: InputDecoration(
-                      labelText: 'Private Key',
+                      labelText: 'Private Key (WIF)',
                       labelStyle: const TextStyle(color: Colors.white),
                       filled: true,
                       fillColor: const Color.fromARGB(100, 0, 0, 0),
@@ -532,10 +694,33 @@ class _SettingsViewState extends State<SettingsView> {
                   ),
                   const SizedBox(height: 20),
                   const Text(
-                    'Your private key is a critical piece of information for accessing your cryptocurrency. Keep it secure and never share it with anyone. If someone gains access to your private key, they can control your assets. Make sure to store it in a safe place and back it up if necessary.',
-                    style: TextStyle(color: Colors.white54),
+                    'This WIF key is derived from your seed and controls ONLY the current address. The Seed Phrase is the primary backup.',
+                    style: TextStyle(color: Colors.white54, fontSize: 14),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 20),
+
+                  if (mnemonic == null) ...[
+                    ElevatedButton.icon(
+                      onPressed: () => _showMigrationDialog(context, wp, bp),
+                      icon: const Icon(Icons.upgrade),
+                      label: const Text('Migrate to Seed Phrase'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.cyanAccent.withValues(alpha: 0.1),
+                        foregroundColor: Colors.cyanAccent,
+                        side: const BorderSide(color: Colors.cyanAccent),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Upgrade to a modern 12 or 24 word recovery phrase. This is more secure and easier to back up.',
+                      style: TextStyle(color: Colors.cyanAccent, fontSize: 11, fontStyle: FontStyle.italic),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  const SizedBox(height: 10),
 
                   // Security Section
                   const Text(
@@ -670,6 +855,24 @@ class _SettingsViewState extends State<SettingsView> {
                   ),
                   const SizedBox(height: 10),
 
+                  ListTile(
+                    title: const Text(
+                      'Network Status',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    leading: const Icon(Icons.lan, color: Colors.white),
+                    onTap: () {
+                      if (context.mounted) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const NetworkInfoView(),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                  const Divider(color: Colors.white),
                   ListTile(
                     title: const Text(
                       'Privacy Policy',

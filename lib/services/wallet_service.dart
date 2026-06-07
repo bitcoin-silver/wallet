@@ -7,6 +7,7 @@ import 'package:bip32/bip32.dart' as bip32;
 import 'package:crypto/crypto.dart';
 import 'package:bech32/bech32.dart';
 import 'package:base_x/base_x.dart';
+import 'package:bip39/bip39.dart' as bip39;
 import 'package:bitcoinsilver_wallet/config.dart';
 import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
 
@@ -20,12 +21,39 @@ class WalletService {
   RpcConfigService get rpcConfigService => _rpcConfig;
 
   String? generatePrivateKey() {
-    String? key;
-    final seed = List<int>.generate(32, (i) => Random.secure().nextInt(256));
-    final root = bip32.BIP32.fromSeed(Uint8List.fromList(seed));
-    final child = root.derivePath('m/0/0');
-    key = _privateKeyToWif(child.privateKey!);
-    return key;
+    final random = Random.secure();
+    final privateKeyBytes = Uint8List(32);
+    for (int i = 0; i < 32; i++) {
+      privateKeyBytes[i] = random.nextInt(256);
+    }
+    return _privateKeyToWif(privateKeyBytes);
+  }
+
+  // Generate a new Seed Phrase wallet
+  Future<Map<String, String>> generateNewSeedWallet({int words = 12}) async {
+    final int strength = words == 24 ? 256 : 128;
+    final mnemonic = bip39.generateMnemonic(strength: strength);
+    return (await getWalletFromMnemonic(mnemonic))!;
+  }
+
+  Future<Map<String, String>?> getWalletFromMnemonic(String mnemonic) async {
+    if (!bip39.validateMnemonic(mnemonic)) return null;
+
+    final seed = bip39.mnemonicToSeed(mnemonic);
+    final root = bip32.BIP32.fromSeed(seed);
+
+    // BIP44 path for BitcoinSilver
+    final child = root.derivePath("m/44'/0'/0'/0/0");
+    final privateKey = child.privateKey!;
+
+    final wif = _privateKeyToWif(privateKey);
+    final address = loadAddressFromKey(wif);
+
+    return {
+      'mnemonic': mnemonic,
+      'privateKey': wif,
+      'address': address ?? '',
+    };
   }
 
   String? loadAddressFromKey(String wifPrivateKey) {
@@ -206,5 +234,157 @@ class WalletService {
     } else {
       return [decoded as Map<String, dynamic>?];
     }
+  }
+
+  Future<Map<String, dynamic>?> getNetworkInfo() async {
+    try {
+      final blockchainInfo = await rpcRequest('getblockchaininfo');
+      final networkInfo = await rpcRequest('getnetworkinfo');
+      final mempoolInfo = await rpcRequest('getmempoolinfo');
+      final miningInfo = await rpcRequest('getmininginfo');
+
+      if (blockchainInfo == null) return null;
+
+      return {
+        'blocks': blockchainInfo['result']?['blocks'],
+        'difficulty': blockchainInfo['result']?['difficulty'],
+        'bestblockhash': blockchainInfo['result']?['bestblockhash'],
+        'mediantime': blockchainInfo['result']?['mediantime'],
+        'version': networkInfo?['result']?['version'],
+        'subversion': networkInfo?['result']?['subversion'],
+        'connections': networkInfo?['result']?['connections'],
+        'mempool_size': mempoolInfo?['result']?['size'],
+        'mempool_bytes': mempoolInfo?['result']?['bytes'],
+        'networkhashps': miningInfo?['result']?['networkhashps'],
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Get UTXOs for address - ported from debug/lib/services/wallet_service.dart
+  Future<List<Map<String, dynamic>>> getUtxos(String address) async {
+    // 1. Get confirmed UTXOs from the chain
+    final result = await rpcRequest('scantxoutset', [
+      'start',
+      [{'desc': 'addr($address)'}]
+    ]);
+
+    final List<Map<String, dynamic>> confirmedUtxos = [];
+    if (result != null && result['result'] != null) {
+      final unspents = result['result']['unspents'] as List<dynamic>? ?? [];
+      for (var u in unspents) {
+        confirmedUtxos.add({
+          'txid': u['txid'],
+          'vout': u['vout'],
+          'amount': (u['amount'] as num).toDouble(),
+          'height': u['height'],
+          'confirmations': 1, // Will be updated if height is available
+        });
+      }
+    }
+
+    // 2. Get mempool txids
+    final List<Map<String, dynamic>> decodedMempool = [];
+    final mempoolResult = await rpcRequest('getrawmempool', [false]);
+    
+    if (mempoolResult != null && mempoolResult['result'] != null) {
+      final List<dynamic> txids = mempoolResult['result'] as List<dynamic>;
+      
+      // Batch process mempool to find relevant transactions
+      const batchSize = 25;
+      for (int i = 0; i < txids.length; i += batchSize) {
+        final chunk = txids.skip(i).take(batchSize).toList();
+        final batchRequests = chunk.map((txid) => {
+          'method': 'getrawtransaction',
+          'params': [txid, true],
+        }).toList();
+
+        final batchResults = await batchRpcRequest(batchRequests);
+        for (final res in batchResults) {
+          if (res != null && res['result'] != null) {
+            decodedMempool.add(res['result'] as Map<String, dynamic>);
+          }
+        }
+      }
+    }
+
+    final List<Map<String, dynamic>> finalUtxos = [];
+    bool hasMempoolActivity = false;
+
+    // 3. Process Decoded Mempool (Detect spends and incoming)
+    final spentInMempool = <String>{};
+    final incomingFromMempool = <Map<String, dynamic>>[];
+
+    for (var data in decodedMempool) {
+      final String txid = data['txid'] ?? '';
+      
+      // Check inputs (detect our coins being spent)
+      final vins = data['vin'] as List<dynamic>? ?? [];
+      for (var vin in vins) {
+        final String? vinTxid = vin['txid'];
+        final dynamic vinVout = vin['vout'];
+        if (vinTxid != null && vinVout != null) {
+          spentInMempool.add('$vinTxid:$vinVout');
+        }
+      }
+
+      // Check outputs (detect new funds or change)
+      final vouts = data['vout'] as List<dynamic>? ?? [];
+      for (var vout in vouts) {
+        final scriptPubKey = vout['scriptPubKey'] as Map<String, dynamic>? ?? {};
+        final String? singleAddr = scriptPubKey['address'];
+        final List<dynamic> addresses = scriptPubKey['addresses'] as List<dynamic>? ?? [];
+        
+        if (singleAddr == address || addresses.contains(address)) {
+          incomingFromMempool.add({
+            'txid': txid,
+            'vout': vout['n'] ?? 0,
+            'amount': (vout['value'] as num? ?? 0.0).toDouble(),
+            'confirmations': 0,
+          });
+          hasMempoolActivity = true;
+        }
+      }
+    }
+
+    // 4. Merge Confirmed and Mempool
+    for (var utxo in confirmedUtxos) {
+      final outpoint = '${utxo['txid']}:${utxo['vout']}';
+      if (spentInMempool.contains(outpoint)) {
+        hasMempoolActivity = true; // Flag that a confirmed coin is being spent
+      } else {
+        finalUtxos.add(utxo);
+      }
+    }
+    finalUtxos.addAll(incomingFromMempool);
+
+    // 5. Final Force-Yellow logic
+    if (hasMempoolActivity && !finalUtxos.any((u) => u['confirmations'] == 0)) {
+      finalUtxos.add({
+        'txid': 'pending_marker',
+        'amount': 0.0,
+        'confirmations': 0,
+      });
+    }
+
+    return finalUtxos;
+  }
+
+  // Ported from debug folder
+  double calculateBalance(List<Map<String, dynamic>> utxos) {
+    return utxos
+        .where((u) =>
+            u['txid'] != 'pending_marker' &&
+            (u['confirmations'] as int) > 0)
+        .fold(0.0, (sum, u) => sum + (u['amount'] as double));
+  }
+
+  double calculateUnconfirmedBalance(List<Map<String, dynamic>> utxos) {
+    return utxos
+        .where((u) =>
+            u['txid'] != 'pending_marker' &&
+            (u['confirmations'] as int) == 0)
+        .fold(0.0, (sum, u) => sum + (u['amount'] as double));
   }
 }

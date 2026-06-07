@@ -420,8 +420,9 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
 
   Widget _buildSelectionModeView(AddressbookProvider provider) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 120.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -471,8 +472,9 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
 
   Widget _buildSearchTab(AddressbookProvider provider) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 120),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -584,8 +586,9 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
 
   Widget _buildRegisterTab(AddressbookProvider provider, WalletProvider walletProvider) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 120),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

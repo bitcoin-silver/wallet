@@ -6,6 +6,7 @@
 // ================================================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
@@ -16,7 +17,123 @@ import '../../providers/addressbook_provider.dart';
 import '../../services/chat_service.dart';
 import '../../widgets/app_background.dart';
 import '../../models/addressbook_entry.dart';
+import '../home/addressbook_view.dart';
 import 'dart:async';
+import 'dart:ui' as ui;
+
+class MarqueeText extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+  final double speed;
+
+  const MarqueeText({
+    super.key,
+    required this.text,
+    required this.style,
+    this.speed = 40.0,
+  });
+
+  @override
+  State<MarqueeText> createState() => _MarqueeTextState();
+}
+
+class _MarqueeTextState extends State<MarqueeText> with SingleTickerProviderStateMixin {
+  late ScrollController _scrollController;
+  late AnimationController _animationController;
+  double _textWidth = 0;
+  final double _gap = 150.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    _animationController = AnimationController(vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initScrolling());
+  }
+
+  @override
+  void didUpdateWidget(MarqueeText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _initScrolling();
+    }
+  }
+
+  void _initScrolling() {
+    if (!mounted) return;
+
+    final textScaler = MediaQuery.textScalerOf(context);
+    final textPainter = TextPainter(
+      text: TextSpan(text: widget.text, style: widget.style),
+      maxLines: 1,
+      textDirection: ui.TextDirection.ltr,
+      textScaler: textScaler,
+    )..layout();
+
+    _textWidth = textPainter.width;
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    // Only scroll if text is longer than screen width (with some padding)
+    if (_textWidth < screenWidth - 60) {
+      _animationController.stop();
+      if (mounted) setState(() { _textWidth = 0; });
+      return;
+    }
+
+    final loopDistance = _textWidth + _gap;
+    _animationController.stop();
+    _animationController.duration = Duration(
+      milliseconds: (loopDistance / widget.speed * 1000).toInt(),
+    );
+    _animationController.repeat();
+    
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_textWidth <= 0) {
+      return Text(
+        widget.text, 
+        style: widget.style, 
+        maxLines: 1, 
+        overflow: TextOverflow.ellipsis
+      );
+    }
+
+    final loopDistance = _textWidth + _gap;
+
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_animationController.value * loopDistance);
+        }
+        return child!;
+      },
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        child: Row(
+          children: [
+            Text(widget.text, style: widget.style),
+            SizedBox(width: _gap),
+            Text(widget.text, style: widget.style),
+            SizedBox(width: _gap),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class ChatView extends StatefulWidget {
   final bool showBackButton;
@@ -34,7 +151,7 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   bool _isTyping = false;
   bool _showScrollButton = false;
   ChatProvider? _chatProvider;
-  bool _initialScrollDone = false;
+  ChatMessage? _replyToMessage;
 
   @override
   void initState() {
@@ -120,7 +237,10 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
       // Still no nickname, maybe it's in the addressbook backend but not local?
       // (This is redundant if searchByAddress already checked backend, but let's be sure)
       if (mounted) {
-        _showUsernamePrompt();
+        // Delay slightly to ensure transition is complete and view is focused
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) _showUsernamePrompt();
+        });
         return;
       }
     }
@@ -130,31 +250,7 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
 
     if (mounted) {
       chatProvider.markChatAsOpened();
-      // Scroll to bottom (index 0 with reverse: true)
-      _performInitialScroll();
     }
-  }
-
-  // Perform initial scroll to bottom after messages are loaded
-  void _performInitialScroll() {
-    if (_initialScrollDone) return;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-
-      Future.delayed(Duration(milliseconds: 100), () {
-        if (!mounted || !_scrollController.hasClients) return;
-
-        try {
-          // With reverse: true, 0 is the bottom
-          _scrollController.jumpTo(0);
-          _initialScrollDone = true;
-          debugPrint('✅ Initial scroll to bottom completed');
-        } catch (e) {
-          debugPrint('⚠️ Scroll error: $e');
-        }
-      });
-    });
   }
 
   void _showUsernamePrompt() {
@@ -208,7 +304,24 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
           TextButton(
             onPressed: () {
               Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Close chat view
+              
+              if (widget.showBackButton && Navigator.of(context).canPop()) {
+                // If we were pushed (standalone), replace with address book
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AddressbookView(),
+                  ),
+                );
+              } else {
+                // If we are in tab mode, just push address book on top
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AddressbookView(),
+                  ),
+                );
+              }
             },
             child: const Text(
               'GO TO ADDRESS BOOK',
@@ -261,9 +374,12 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     if (text.isEmpty) return;
 
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-    chatProvider.sendMessage(text);
+    chatProvider.sendMessage(text, replyTo: _replyToMessage);
 
     _messageController.clear();
+    setState(() {
+      _replyToMessage = null;
+    });
     _stopTyping();
 
     // Scroll to bottom (0) after sending message
@@ -393,8 +509,83 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                             fontSize: 12,
                           ),
                         ),
+                        if (chatProvider.isConnected) ...[
+                          const SizedBox(width: 12),
+                          Container(
+                            width: 1,
+                            height: 12,
+                            color: Colors.white24,
+                          ),
+                          const SizedBox(width: 12),
+                          const Icon(
+                            Icons.people_outline,
+                            size: 14,
+                            color: Colors.cyanAccent,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${chatProvider.userCount} Online',
+                            style: const TextStyle(
+                              color: Colors.cyanAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (chatProvider.latestSystemMessage != null) ...[
+                            const SizedBox(width: 12),
+                            Container(
+                              width: 1,
+                              height: 12,
+                              color: Colors.white24,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                chatProvider.latestSystemMessage!,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 11,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ],
                       ],
                     ),
+                    if (chatProvider.serverSystemMessage != null)
+                      Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.cyanAccent.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.cyanAccent.withValues(alpha: 0.1),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.campaign,
+                              size: 16,
+                              color: Colors.cyanAccent,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: MarqueeText(
+                                text: chatProvider.serverSystemMessage!,
+                                style: const TextStyle(
+                                  color: Colors.cyanAccent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -447,8 +638,8 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
           );
         }
 
-        // Initial scroll is handled by _performInitialScroll when the chat loads.
-        // We removed the auto-scroll callback from here as it was interfering with manual scrolling.
+        // Initial scroll is handled automatically by reverse: true in ListView.
+        // The newest message (index 0) is at the bottom.
 
         return Stack(
           children: [
@@ -537,11 +728,58 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                     ],
                   ),
                 ),
-                // Message bubble with long-press to save to address book
+                // Reply preview if applicable
+                if (message.replyToText != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border(
+                        left: BorderSide(
+                          color: Colors.cyanAccent.withValues(alpha: 0.5),
+                          width: 3,
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          message.replyToUser ?? 'User',
+                          style: TextStyle(
+                            color: Colors.cyanAccent.withValues(alpha: 0.7),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          message.replyToText!,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                // Message bubble with options (copy/save)
                 GestureDetector(
-                  onLongPress: !isMyMessage
-                      ? () => _showAddToAddressBookDialog(message, displayName)
-                      : null,
+                  onHorizontalDragEnd: (details) {
+                    // Swipe right to reply (positive velocity)
+                    if (details.primaryVelocity != null && details.primaryVelocity! > 500) {
+                      if (!message.isSystem) {
+                        setState(() {
+                          _replyToMessage = message;
+                        });
+                        _messageFocusNode.requestFocus();
+                      }
+                    }
+                  },
+                  onLongPress: () => _showMessageOptions(message, displayName, isMyMessage),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -604,40 +842,43 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
 
   Widget _buildSystemMessage(ChatMessage message) {
     return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: Colors.cyanAccent.withValues(alpha: 0.2),
-            width: 1,
+      child: GestureDetector(
+        onLongPress: () => _showMessageOptions(message, 'System', false),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.cyanAccent.withValues(alpha: 0.2),
+              width: 1,
+            ),
           ),
-        ),
-        child: Linkify(
-          onOpen: (link) async {
-            final uri = Uri.parse(link.url);
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(
-                uri,
-                mode: LaunchMode.externalApplication,
-              );
-            }
-          },
-          text: message.message,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.8),
-            fontSize: 15,
-            fontStyle: FontStyle.italic,
-            fontWeight: FontWeight.w500,
-          ),
-          linkStyle: TextStyle(
-            color: Colors.cyanAccent.withValues(alpha: 0.9),
-            fontSize: 15,
-            fontStyle: FontStyle.italic,
-            decoration: TextDecoration.underline,
+          child: Linkify(
+            onOpen: (link) async {
+              final uri = Uri.parse(link.url);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(
+                  uri,
+                  mode: LaunchMode.externalApplication,
+                );
+              }
+            },
+            text: message.message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 15,
+              fontStyle: FontStyle.italic,
+              fontWeight: FontWeight.w500,
+            ),
+            linkStyle: TextStyle(
+              color: Colors.cyanAccent.withValues(alpha: 0.9),
+              fontSize: 15,
+              fontStyle: FontStyle.italic,
+              decoration: TextDecoration.underline,
+            ),
           ),
         ),
       ),
@@ -678,85 +919,242 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   }
 
   Widget _buildMessageInput() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF1A1A1A).withValues(alpha: 0.9),
-            const Color(0xFF1A1A1A).withValues(alpha: 0.7),
+    return Consumer<ChatProvider>(
+      builder: (context, chatProvider, child) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Typing indicator
+            if (chatProvider.typingUsers.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.cyanAccent.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${chatProvider.typingUsers.values.join(", ")} ${chatProvider.typingUsers.length == 1 ? "is" : "are"} typing...',
+                        style: TextStyle(
+                          color: Colors.cyanAccent.withValues(alpha: 0.6),
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // Reply Preview Bar
+            if (_replyToMessage != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.cyanAccent.withValues(alpha: 0.1),
+                  border: Border(
+                    top: BorderSide(
+                      color: Colors.cyanAccent.withValues(alpha: 0.2),
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.reply, color: Colors.cyanAccent, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Replying to ${_replyToMessage!.nickname ?? _replyToMessage!.walletAddress.substring(0, 8)}',
+                            style: const TextStyle(
+                              color: Colors.cyanAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            _replyToMessage!.message,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20, color: Colors.white54),
+                      onPressed: () => setState(() => _replyToMessage = null),
+                    ),
+                  ],
+                ),
+              ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF1A1A1A).withValues(alpha: 0.9),
+                    const Color(0xFF1A1A1A).withValues(alpha: 0.7),
+                  ],
+                ),
+                border: Border(
+                  top: BorderSide(
+                    color: const Color(0xFFC0C0C0).withValues(alpha: 0.2),
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // Text input
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: const Color(0xFFC0C0C0).withValues(alpha: 0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: TextField(
+                        controller: _messageController,
+                        focusNode: _messageFocusNode,
+                        onChanged: _onTextChanged,
+                        onSubmitted: (_) => _sendMessage(),
+                        style: const TextStyle(color: Colors.white),
+                        maxLength: 500,
+                        buildCounter: (context,
+                            {required currentLength, required isFocused, maxLength}) {
+                          return null; // Hide counter
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Type a message...',
+                          hintStyle: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.4),
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Send button
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF00E5FF),
+                          Colors.cyanAccent,
+                        ],
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.cyanAccent.withValues(alpha: 0.3),
+                          blurRadius: 12,
+                          spreadRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.send, color: Colors.black),
+                      onPressed: _sendMessage,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
-        ),
-        border: Border(
-          top: BorderSide(
-            color: const Color(0xFFC0C0C0).withValues(alpha: 0.2),
+        );
+      },
+    );
+  }
+
+  void _showMessageOptions(ChatMessage message, String displayName, bool isMyMessage) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          border: Border.all(
+            color: Colors.cyanAccent.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
-      ),
-      child: Row(
-        children: [
-          // Text input
-          Expanded(
-            child: Container(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: const Color(0xFFC0C0C0).withValues(alpha: 0.2),
-                  width: 1,
-                ),
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
               ),
-              child: TextField(
-                controller: _messageController,
-                focusNode: _messageFocusNode,
-                onChanged: _onTextChanged,
-                onSubmitted: (_) => _sendMessage(),
-                style: const TextStyle(color: Colors.white),
-                maxLength: 500,
-                buildCounter: (context,
-                    {required currentLength, required isFocused, maxLength}) {
-                  return null; // Hide counter
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.copy, color: Colors.cyanAccent),
+              title: const Text('Copy Message', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: message.message));
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Message copied to clipboard'),
+                    backgroundColor: Colors.cyanAccent.withValues(alpha: 0.8),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
+            if (!message.isSystem)
+              ListTile(
+                leading: const Icon(Icons.reply, color: Colors.cyanAccent),
+                title: const Text('Reply', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _replyToMessage = message;
+                  });
+                  _messageFocusNode.requestFocus();
                 },
-                decoration: InputDecoration(
-                  hintText: 'Type a message...',
-                  hintStyle: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.4),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
-                  ),
-                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Send button
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFF00E5FF),
-                  Colors.cyanAccent,
-                ],
+            if (!isMyMessage && !message.isSystem)
+              ListTile(
+                leading: const Icon(Icons.person_add, color: Colors.cyanAccent),
+                title: const Text('Add to Address Book', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showAddToAddressBookDialog(message, displayName);
+                },
               ),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.cyanAccent.withValues(alpha: 0.3),
-                  blurRadius: 12,
-                  spreadRadius: 0,
-                ),
-              ],
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.send, color: Colors.black),
-              onPressed: _sendMessage,
-            ),
-          ),
-        ],
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
@@ -912,11 +1310,13 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   }
 
   String _formatTime(DateTime timestamp) {
+    // Convert UTC timestamp from server to local time for correct "X mins ago" calculation
+    final localTimestamp = timestamp.toLocal();
     final now = DateTime.now();
-    final difference = now.difference(timestamp);
+    final difference = now.difference(localTimestamp);
 
     if (difference.inDays > 0) {
-      return DateFormat('MMM d, HH:mm').format(timestamp);
+      return DateFormat('MMM d, HH:mm').format(localTimestamp);
     } else if (difference.inHours > 0) {
       return '${difference.inHours}h ago';
     } else if (difference.inMinutes > 0) {

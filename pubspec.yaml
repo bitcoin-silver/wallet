@@ -32,9 +32,10 @@ dependencies:
     sdk: flutter
   flutter_secure_storage: ^10.0.0
   pointycastle: ^3.9.1
-  crypto: ^3.0.1
+  crypto: ^3.0.7
   bech32: ^0.2.2
   bip32: ^2.0.0
+  bip39: ^1.0.6
   http: ^1.2.2
   hex: ^0.2.0
   provider: ^6.1.5+1

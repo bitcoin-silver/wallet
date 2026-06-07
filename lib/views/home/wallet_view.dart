@@ -526,6 +526,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
             ),
             child: AppBackground(
               child: SafeArea(
+                //physics: const AlwaysScrollableScrollPhysics(),
                 child: Padding(
                   padding: const EdgeInsets.only(top: 20, bottom: 20),
                   child: Column(

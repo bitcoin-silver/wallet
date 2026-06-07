@@ -18,6 +18,7 @@ class WalletProvider with ChangeNotifier {
   Function()? _onChatMessageTapped;
 
   String? _privateKey;
+  String? _mnemonic;
   String? _address;
   double? _balance = 0.0;
   double? _pendingBalance = 0.0;
@@ -45,32 +46,32 @@ class WalletProvider with ChangeNotifier {
 
   // Getters
   String? get privateKey => _privateKey;
+  String? get mnemonic => _mnemonic;
   String? get address => _address;
   double? get balance => _balance;
   double? get pendingBalance => _pendingBalance;
   List? get utxos => _utxos;
   bool get isLoading => _isLoading;
   String? get lastError => _lastError;
-  bool get hasPendingTransactions => _pendingTransactions.isNotEmpty;
-  int get pendingTransactionsCount => _pendingTransactions.length;
+  bool get hasPendingTransactions => _pendingTransactions.isNotEmpty || (_pendingBalance != null && _pendingBalance! > 0);
+  int get pendingTransactionsCount => _pendingTransactions.length + ((_pendingBalance != null && _pendingBalance! > 0) ? 1 : 0);
 
   WalletService get walletService => _ws; // Public getter for WalletService
 
-  // Display balance - shows actual spendable balance considering consumed UTXOs
+  // Display balance - shows actual spendable balance considering consumed UTXOs and incoming funds
   double? get displayBalance {
-    if (_pendingTransactions.isEmpty) {
-      return _balance;
-    }
-
     // Start with confirmed balance from available UTXOs
-    double spendableBalance = _balance ?? 0.0;
+    double total = _balance ?? 0.0;
+
+    // Add unconfirmed incoming funds (excluding our own change to avoid double counting)
+    total += _pendingBalance ?? 0.0;
 
     // Add expected change from pending transactions back to the wallet
     for (final tx in _pendingTransactions.values) {
-      spendableBalance += tx.changeAmount;
+      total += tx.changeAmount;
     }
 
-    return spendableBalance < 0 ? 0.0 : spendableBalance;
+    return total < 0 ? 0.0 : total;
   }
 
   // Get list of pending transactions
@@ -147,6 +148,11 @@ class WalletProvider with ChangeNotifier {
         onTimeout: () => null,
       );
 
+      _mnemonic = await _storage.read(key: 'mnemonic').timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => null,
+      );
+
       if (_privateKey != null) {
         _address = _ws.loadAddressFromKey(_privateKey!);
 
@@ -204,16 +210,21 @@ class WalletProvider with ChangeNotifier {
     }
   }
 
-  Future<void> saveWallet(String address, String privateKey) async {
+  Future<void> saveWallet(String address, String privateKey, {String? mnemonic}) async {
     _privateKey = privateKey;
     _address = address;
+    _mnemonic = mnemonic;
     await _storage.write(key: 'key', value: privateKey);
+    if (mnemonic != null) {
+      await _storage.write(key: 'mnemonic', value: mnemonic);
+    }
     notifyListeners();
   }
 
   Future<void> deleteWallet() async {
     _privateKey = null;
     _address = null;
+    _mnemonic = null;
     _balance = 0.0;
     _pendingBalance = 0.0;
     _utxos = [];
@@ -221,6 +232,7 @@ class WalletProvider with ChangeNotifier {
     _pendingTimestamps.clear();
     _pendingTransactions.clear();
     await _storage.delete(key: 'key');
+    await _storage.delete(key: 'mnemonic');
     notifyListeners();
   }
 
@@ -273,85 +285,30 @@ class WalletProvider with ChangeNotifier {
 
       _cleanupPendingTransactions();
 
-      // Scan for UTXOs
-      final result = await _ws.rpcRequest('scantxoutset', [
-        'start',
-        [{'desc': 'addr($_address)'}]
-      ]);
-
-      if (result == null || result['result'] == null) {
-        // Keep pending balance if we have pending transactions
-        if (_pendingTransactions.isEmpty) {
-          _balance = 0.0;
-          _pendingBalance = 0.0;
-          _utxos = [];
-        }
-        notifyListeners();
-        return;
-      }
-
-      final utxos = result['result']['unspents'] as List<dynamic>? ?? [];
-
-      if (utxos.isEmpty) {
-        _balance = 0.0;
-        _utxos = [];
-        notifyListeners();
-        return;
-      }
-
-      // Get blockchain height
-      final blockchainInfo = await _ws.rpcRequest('getblockchaininfo');
-      final currentHeight = blockchainInfo?['result']?['blocks'] ?? 0;
-
-      if (currentHeight == 0) {
-        _lastError = 'Could not get blockchain info';
-        notifyListeners();
-        return;
-      }
-
-      // Get mempool transactions
-      final mempoolResult = await _ws.rpcRequest('getrawmempool', [false]);
-      final mempoolTxIds = mempoolResult?['result'] as List<dynamic>? ?? [];
+      // Get all UTXOs (Confirmed + Mempool) using the standard logic from debug folder
+      final allUtxos = await _ws.getUtxos(_address!);
+      
+      // Calculate balances using the standard logic
+      _balance = _ws.calculateBalance(allUtxos);
+      _pendingBalance = _ws.calculateUnconfirmedBalance(allUtxos);
+      
+      // Also lock UTXOs consumed by our local pending transactions to prevent double-spending
       final lockedUtxos = <String>{};
-
-      // Batch check mempool transactions (process in chunks to avoid huge requests)
-      const batchSize = 20;
-      for (int i = 0; i < mempoolTxIds.length; i += batchSize) {
-        final chunk = mempoolTxIds.skip(i).take(batchSize).toList();
-
-        try {
-          // Build batch request for getrawtransaction
-          final batchRequests = chunk.map((txid) => {
-            'method': 'getrawtransaction',
-            'params': [txid, true],
-          }).toList();
-
-          final batchResults = await _ws.batchRpcRequest(batchRequests);
-
-          // Process batch results
-          for (final tx in batchResults) {
-            if (tx != null && tx['result'] != null) {
-              final vinList = tx['result']['vin'] as List<dynamic>? ?? [];
-              for (final vin in vinList) {
-                lockedUtxos.add('${vin['txid']}:${vin['vout']}');
-              }
-            }
-          }
-        } catch (e) {
-          // Continue with next batch
-        }
-      }
-
-      // Also lock UTXOs consumed by our pending transactions
       for (final pendingTx in _pendingTransactions.values) {
         for (final utxo in pendingTx.consumedUtxos) {
           lockedUtxos.add('${utxo['txid']}:${utxo['vout']}');
         }
       }
 
-      // Check if pending transactions are confirmed (batch request)
-      final confirmedTxs = <String>[];
+      // Filter out locally locked UTXOs and pending markers for internal storage
+      _utxos = allUtxos.where((utxo) {
+        final utxoId = '${utxo['txid']}:${utxo['vout']}';
+        return utxo['txid'] != 'pending_marker' && !lockedUtxos.contains(utxoId);
+      }).toList();
+
+      // Check if our local pending transactions are confirmed
       if (_pendingTxids.isNotEmpty) {
+        final confirmedTxs = <String>[];
         try {
           final batchRequests = _pendingTxids.map((txid) => {
             'method': 'getrawtransaction',
@@ -365,53 +322,22 @@ class WalletProvider with ChangeNotifier {
             final pendingTxid = _pendingTxids.elementAt(i);
 
             if (tx != null && tx['result'] != null) {
-              if (tx['result']['confirmations'] != null && tx['result']['confirmations'] > 0) {
+              final txData = tx['result'];
+              if (txData['confirmations'] != null && txData['confirmations'] > 0) {
                 confirmedTxs.add(pendingTxid);
-              } else {
-                // Still pending - lock its inputs
-                final vinList = tx['result']['vin'] as List<dynamic>? ?? [];
-                for (final vin in vinList) {
-                  lockedUtxos.add('${vin['txid']}:${vin['vout']}');
-                }
               }
             }
           }
-        } catch (e) {
-          // Transactions might not be in mempool yet
+        } catch (_) {}
+
+        // Clean up confirmed local pending transactions
+        for (final txid in confirmedTxs) {
+          _pendingTxids.remove(txid);
+          _pendingTimestamps.remove(txid);
+          _pendingTransactions.remove(txid);
         }
       }
 
-      // Remove confirmed transactions
-      for (final txid in confirmedTxs) {
-        _pendingTxids.remove(txid);
-        _pendingTimestamps.remove(txid);
-        _pendingTransactions.remove(txid);
-      }
-
-      // Filter available UTXOs
-      final availableUtxos = <Map<String, dynamic>>[];
-      double totalBalance = 0.0;
-
-      for (final utxo in utxos) {
-        final utxoId = '${utxo['txid']}:${utxo['vout']}';
-
-        int confirmations = 0;
-        if (utxo['height'] != null && utxo['height'] > 0) {
-          confirmations = currentHeight - utxo['height'] + 1;
-        }
-
-        // Only use confirmed UTXOs that are not locked
-        if (confirmations > 0 && !lockedUtxos.contains(utxoId)) {
-          availableUtxos.add({
-            ...utxo,
-            'confirmations': confirmations,
-          });
-          totalBalance += utxo['amount'] ?? 0.0;
-        }
-      }
-
-      _utxos = availableUtxos;
-      _balance = totalBalance;
       _lastFetch = DateTime.now();
 
     } catch (e) {
@@ -428,9 +354,10 @@ class WalletProvider with ChangeNotifier {
       String address,
       double? amount, {
         double? feeRateOverride,
+        bool isSweep = false,
       }) async {
 
-    if (amount == null || amount <= 0) {
+    if (!isSweep && (amount == null || amount <= 0)) {
       return {
         'success': false,
         'message': 'Invalid amount',
@@ -444,6 +371,61 @@ class WalletProvider with ChangeNotifier {
       return {
         'success': false,
         'message': 'No confirmed UTXOs available. Please wait for confirmations.',
+      };
+    }
+
+    // For sweep, we use all UTXOs
+    if (isSweep) {
+      double inputSum = _utxos.fold(0.0, (sum, utxo) => sum + (utxo['amount'] as num).toDouble());
+      List<Map<String, dynamic>> selectedUtxos = _utxos.map((utxo) => {
+        'txid': utxo['txid'],
+        'vout': utxo['vout'],
+      }).toList();
+
+      // Get fee rate
+      double feeRate = feeRateOverride ?? 0.00001;
+      // ... (rest of fee rate logic)
+      try {
+        if (feeRateOverride == null) {
+          final feeResult = await _ws.rpcRequest('estimatesmartfee', [6]);
+          feeRate = feeResult?['result']?['feerate'] ?? 0.00001;
+          if (feeRate <= 0) feeRate = 0.00001;
+        }
+      } catch (_) {
+        feeRate = 0.00001;
+      }
+
+      final txSize = 10 + (selectedUtxos.length * 148) + (1 * 34); // Only 1 output for sweep
+      final fee = (feeRate * txSize / 1000);
+      final actualFee = double.parse(fee.toStringAsFixed(8));
+      final sweepAmount = double.parse((inputSum - actualFee).toStringAsFixed(8));
+
+      if (sweepAmount <= 0.00000546) {
+        return {
+          'success': false,
+          'message': 'Balance too low to cover transaction fees.',
+        };
+      }
+
+      final outputs = <String, dynamic>{
+        address: sweepAmount,
+      };
+
+      final createRawResult = await _ws.rpcRequest('createrawtransaction', [selectedUtxos, outputs]);
+      if (createRawResult == null || createRawResult['result'] == null) {
+        return {'success': false, 'message': 'Failed to create sweep transaction'};
+      }
+
+      return {
+        'success': true,
+        'result': createRawResult['result'],
+        'fee': actualFee,
+        'toAddress': address,
+        'consumedUtxos': selectedUtxos.map((utxo) {
+          final fullUtxo = _utxos.firstWhere((u) => u['txid'] == utxo['txid'] && u['vout'] == utxo['vout']);
+          return {'txid': utxo['txid'], 'vout': utxo['vout'], 'amount': fullUtxo['amount'] ?? 0.0};
+        }).toList(),
+        'changeAmount': 0.0,
       };
     }
 
@@ -480,7 +462,7 @@ class WalletProvider with ChangeNotifier {
       final txSize = 10 + (inputCount * 148) + (outputCount * 34);
       final fee = (feeRate * txSize / 1000);
 
-      if (inputSum >= amount + fee) {
+      if (inputSum >= amount! + fee) {
         final actualFee = double.parse(fee.toStringAsFixed(8));
         final change = double.parse((inputSum - amount - actualFee).toStringAsFixed(8));
 
@@ -533,7 +515,7 @@ class WalletProvider with ChangeNotifier {
   Future<Map<String, dynamic>> sendTransaction(
       String address,
       double amount,
-      {double? feeRate}
+      {double? feeRate, bool isSweep = false}
       ) async {
 
     if (_privateKey == null || _address == null) {
@@ -569,7 +551,8 @@ class WalletProvider with ChangeNotifier {
     final createResult = await createTransaction(
         address,
         amount,
-        feeRateOverride: feeRate
+        feeRateOverride: feeRate,
+        isSweep: isSweep,
     );
 
     if (!createResult['success']) {
@@ -703,6 +686,54 @@ class WalletProvider with ChangeNotifier {
   // Helper method to refresh balance
   Future<void> refreshBalance() async {
     await fetchUtxos(force: true);
+  }
+
+  Future<Map<String, dynamic>?> getNetworkInfo() async {
+    return await _ws.getNetworkInfo();
+  }
+
+  Future<bool> migrateToSeed({int words = 12}) async {
+    if (_privateKey == null || _address == null) return false;
+
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // 1. Generate new seed wallet
+
+      // Refresh balance first
+      await refreshBalance();
+      final currentBalance = _balance ?? 0.0;
+
+      final walletData = await _ws.generateNewSeedWallet(words: words);
+      final mnemonic = walletData['mnemonic']!;
+      final newAddress = walletData['address']!;
+      final newWif = walletData['privateKey']!;
+
+      if (currentBalance > 0.00001) {
+        // 2. Sweep funds
+        final result = await sendTransaction(newAddress, currentBalance, isSweep: true);
+
+        if (!result['success']) {
+          _lastError = 'Migration failed: ${result['message']}';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+      }
+
+      // Save new wallet
+      await saveWallet(newAddress, newWif, mnemonic: mnemonic);
+      
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _lastError = 'Migration error: $e';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
   }
 }
 
