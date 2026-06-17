@@ -24,7 +24,7 @@ class WalletView extends StatefulWidget {
   State<WalletView> createState() => _WalletViewState();
 }
 
-class _WalletViewState extends State<WalletView> with SingleTickerProviderStateMixin {
+class _WalletViewState extends State<WalletView> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   int? _touchedIndex;
   late AnimationController _pendingAnimationController;
   late Animation<double> _pendingAnimation;
@@ -33,6 +33,8 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    
     _pendingAnimationController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
@@ -46,30 +48,45 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
     ));
     _pendingAnimationController.repeat(reverse: true);
 
-    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      final wp = Provider.of<WalletProvider>(context, listen: false);
-      if (wp.hasPendingTransactions) {
-        wp.fetchUtxos(force: true, silent: true);
-      }
+    // Optimized periodic refresh (3 minutes instead of 30s to reduce RPC load)
+    _refreshTimer = Timer.periodic(const Duration(seconds: 180), (timer) {
+      _syncWalletData(silent: true);
     });
-
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _refreshTimer?.cancel();
     _pendingAnimationController.dispose();
     super.dispose();
   }
 
-  Future<void> _onRefresh() async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refresh immediately when user returns to app
+      _syncWalletData(silent: true);
+    }
+  }
+
+  Future<void> _syncWalletData({bool silent = false, bool force = true}) async {
     final wp = Provider.of<WalletProvider>(context, listen: false);
     final bp = Provider.of<BlockchainProvider>(context, listen: false);
 
+    if (wp.address == null) return;
+
+    await Future.wait([
+      wp.fetchUtxos(force: force, silent: silent),
+      bp.loadBlockchain(wp.address, silent: silent),
+    ]);
+  }
+
+  Future<void> _onRefresh() async {
     // Show feedback message
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
+        content: const Row(
           children: [
             SizedBox(
               width: 16,
@@ -79,72 +96,20 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.cyanAccent),
               ),
             ),
-            const SizedBox(width: 12),
-            Text(
-              wp.hasPendingTransactions
-                  ? 'Checking for confirmations...'
-                  : 'Syncing wallet data...',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            SizedBox(width: 12),
+            Text('Syncing wallet data...', style: TextStyle(color: Colors.white, fontSize: 14)),
           ],
         ),
         backgroundColor: const Color(0xFF2A2A2A),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: Colors.cyanAccent.withValues(alpha: 0.3),
-            width: 1,
-          ),
-        ),
       ),
     );
 
-    if (wp.hasPendingTransactions) {
-      await wp.fetchUtxos(force: true, silent: true); // Use silent mode
-    } else {
-      await Future.wait([
-        wp.fetchUtxos(force: true),
-        bp.loadBlockchain(wp.address),
-      ]);
-    }
+    await _syncWalletData(silent: false, force: true);
 
-    // Show completion message
     if (mounted) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 18),
-              SizedBox(width: 12),
-              Text(
-                'Wallet synced',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFF2A2A2A),
-          duration: const Duration(seconds: 1),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: Colors.green.withValues(alpha: 0.3),
-              width: 1,
-            ),
-          ),
-        ),
-      );
     }
   }
 

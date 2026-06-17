@@ -62,8 +62,8 @@ void main() async {
   final wp = WalletProvider(rpcConfig);
   final bp = BlockchainProvider();
 
-  // Link providers - so notification taps refresh transactions
-  wp.setTransactionRefreshCallback((address) => bp.loadBlockchain(address));
+  // Link providers - so notifications refresh both balance and transactions silently
+  wp.setTransactionRefreshCallback((address) => bp.loadBlockchain(address, silent: true));
   wp.setChatMessageRefreshCallback(() {
     // Navigate to chat when notification is tapped
     navigatorKey.currentState?.push(

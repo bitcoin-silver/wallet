@@ -37,100 +37,124 @@ class MarqueeText extends StatefulWidget {
   State<MarqueeText> createState() => _MarqueeTextState();
 }
 
-class _MarqueeTextState extends State<MarqueeText> with SingleTickerProviderStateMixin {
-  late ScrollController _scrollController;
-  late AnimationController _animationController;
+class _MarqueeTextState extends State<MarqueeText>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
   double _textWidth = 0;
-  final double _gap = 150.0;
+  double _textHeight = 0;
 
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController();
-    _animationController = AnimationController(vsync: this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initScrolling());
+    _controller = AnimationController(vsync: this);
+    _controller.addStatusListener(_handleStatusChange);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+  }
+
+  void _handleStatusChange(AnimationStatus status) async {
+    if (status == AnimationStatus.completed) {
+      // Wait 10 seconds at the end of the scroll
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) {
+        _controller.forward(from: 0.0);
+      }
+    }
   }
 
   @override
   void didUpdateWidget(MarqueeText oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.text != widget.text) {
-      _initScrolling();
+    if (oldWidget.text != widget.text || oldWidget.style != widget.style) {
+      _measure();
     }
   }
 
-  void _initScrolling() {
+  /// Measures the text dimensions.
+  void _measure() {
     if (!mounted) return;
 
     final textScaler = MediaQuery.textScalerOf(context);
-    final textPainter = TextPainter(
+    final painter = TextPainter(
       text: TextSpan(text: widget.text, style: widget.style),
       maxLines: 1,
       textDirection: ui.TextDirection.ltr,
       textScaler: textScaler,
     )..layout();
 
-    _textWidth = textPainter.width;
-    final screenWidth = MediaQuery.of(context).size.width;
-    
-    // Only scroll if text is longer than screen width (with some padding)
-    if (_textWidth < screenWidth - 60) {
-      _animationController.stop();
-      if (mounted) setState(() { _textWidth = 0; });
-      return;
+    if (mounted) {
+      setState(() {
+        _textWidth = painter.width;
+        _textHeight = painter.height;
+      });
     }
-
-    final loopDistance = _textWidth + _gap;
-    _animationController.stop();
-    _animationController.duration = Duration(
-      milliseconds: (loopDistance / widget.speed * 1000).toInt(),
-    );
-    _animationController.repeat();
-    
-    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
-    _scrollController.dispose();
+    _controller.removeStatusListener(_handleStatusChange);
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_textWidth <= 0) {
-      return Text(
-        widget.text, 
-        style: widget.style, 
-        maxLines: 1, 
-        overflow: TextOverflow.ellipsis
-      );
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final containerWidth = constraints.maxWidth;
+        final shouldScroll = _textWidth > containerWidth;
 
-    final loopDistance = _textWidth + _gap;
-
-    return AnimatedBuilder(
-      animation: _animationController,
-      builder: (context, child) {
-        if (_scrollController.hasClients) {
-          _scrollController.jumpTo(_animationController.value * loopDistance);
+        if (!shouldScroll || _textWidth <= 0) {
+          if (_controller.isAnimating) _controller.stop();
+          return Text(
+            widget.text,
+            style: widget.style,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          );
         }
-        return child!;
+
+        // Total distance to travel: from right of container to fully off-screen left
+        // Added 100px buffer to ensure it's completely gone before the 10s pause
+        final totalDistance = containerWidth + _textWidth + 100;
+        final duration = Duration(
+          milliseconds: (totalDistance / widget.speed * 1000).toInt(),
+        );
+
+        if (_controller.duration != duration) {
+          _controller.duration = duration;
+        }
+
+        if (!_controller.isAnimating && _controller.status != AnimationStatus.completed) {
+          _controller.forward();
+        }
+
+        return SizedBox(
+          height: _textHeight,
+          child: ClipRect(
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (_, __) {
+                // Starts at containerWidth, ends at -(_textWidth + 100)
+                final xOffset = containerWidth - (_controller.value * totalDistance);
+                return OverflowBox(
+                  maxWidth: double.infinity,
+                  maxHeight: _textHeight,
+                  alignment: Alignment.centerLeft,
+                  child: Transform.translate(
+                    offset: Offset(xOffset, 0),
+                    child: Text(
+                      widget.text,
+                      style: widget.style,
+                      maxLines: 1,
+                      softWrap: false,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
       },
-      child: SingleChildScrollView(
-        controller: _scrollController,
-        scrollDirection: Axis.horizontal,
-        physics: const NeverScrollableScrollPhysics(),
-        child: Row(
-          children: [
-            Text(widget.text, style: widget.style),
-            SizedBox(width: _gap),
-            Text(widget.text, style: widget.style),
-            SizedBox(width: _gap),
-          ],
-        ),
-      ),
     );
   }
 }

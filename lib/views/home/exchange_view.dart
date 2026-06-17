@@ -19,10 +19,10 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
   bool _isLoadingSupply = false;
 
   // Volume data for exchanges
-  String? _exbitronVolume;
+  //String? _exbitronVolume;
   String? _nestexVolume;
   String? _qutradeVolume;
-  String? _klingexVolume;
+  //String? _klingexVolume;
   String? _bitstorageVolume;
 
   // Animation controllers
@@ -81,10 +81,10 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
   }
 
   Future<void> _fetchAllVolumes() async {
-    _fetchExbitronVolume();
+    //_fetchExbitronVolume();
     _fetchQutradeVolume();
     _fetchNestexVolume();
-    _fetchKlingexVolume();
+    //_fetchKlingexVolume();
     _fetchBitstorageVolume();
   }
 
@@ -143,7 +143,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
       });
     }
   }
-
+ /*
   Future<void> _fetchExbitronVolume() async {
     try {
       final response = await http.get(
@@ -205,7 +205,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
       }
     }
   }
-
+*/
   Future<void> _fetchQutradeVolume() async {
     try {
       final response = await http.get(
@@ -286,7 +286,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
       });
     }
   }
-
+/*
   Future<void> _fetchKlingexVolume() async {
     try {
       final response = await http.get(
@@ -337,7 +337,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
       });
     }
   }
-
+*/
   Future<void> _fetchBitstorageVolume() async {
     try {
       final response = await http.get(
@@ -710,19 +710,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
 
                   const SizedBox(height: 20),
 
-                  // Exchange Cards - Reordered as requested
-                  _buildExchangeCard(
-                    context,
-                    name: 'EXBITRON',
-                    url: 'https://app.exbitron.com/exchange/?market=BTCS-USDT',
-                    pair: 'BTCS/USDT',
-                    volume: _exbitronVolume != null
-                        ? '24h Volume: $_exbitronVolume'
-                        : 'Loading volume...',
-                    icon: Icons.currency_exchange,
-                    isPrimary: true,
-                  ),
-
+                  // Exchange Cards
                   _buildExchangeCard(
                     context,
                     name: 'NESTEX',
@@ -732,6 +720,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                         ? '24h Volume: $_nestexVolume'
                         : 'Trade Now',
                     icon: Icons.account_balance,
+                    isPrimary: true,
                   ),
 
                   _buildExchangeCard(
@@ -743,19 +732,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                         ? '24h Volume: $_qutradeVolume'
                         : 'Trade Now',
                     icon: Icons.trending_up,
-                    isNew: true,
-                  ),
-
-                  _buildExchangeCard(
-                    context,
-                    name: 'KlingEx',
-                    url: 'https://klingex.io/trade/BTCS-USDT',
-                    pair: 'BTCS/USDT',
-                    volume: _klingexVolume != null
-                        ? '24h Volume: $_klingexVolume'
-                        : 'Professional Trading',
-                    icon: Icons.auto_graph,
-                    isNew: true,
+                    //isNew: true,
                   ),
 
                   _buildExchangeCard(

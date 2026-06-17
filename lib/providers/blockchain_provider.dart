@@ -20,23 +20,29 @@ class BlockchainProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get hasMore => _hasMore;
 
-  Future<void> loadBlockchain(String? address) async {
+  Future<void> loadBlockchain(String? address, {bool silent = false}) async {
     if (address == null) return;
 
     final DateTime now = DateTime.now();
     final String formattedDate = DateFormat('HH:mm:ss').format(now);
 
-    // Clear existing transactions and reset pagination to fetch latest
-    _transactions.clear();
-    _startIndex = 0;
-    _hasMore = true;
+    if (!silent) {
+      // Clear existing transactions and reset pagination to fetch latest
+      _transactions.clear();
+      _startIndex = 0;
+      _hasMore = true;
+      notifyListeners();
+    } else {
+      // For silent refresh, we reset index to fetch latest page in background
+      _startIndex = 0;
+    }
 
-    await fetchTransactions(address);
+    await fetchTransactions(address, silent: silent);
     _timestamp = formattedDate;
     notifyListeners();
   }
 
-  Future<void> fetchPrice() async {
+  Future<void> fetchPrice({bool silent = false}) async {
     const url = Config.liveCoinWatchUrl;
     try {
       final response = await http.post(
@@ -72,13 +78,17 @@ class BlockchainProvider with ChangeNotifier {
       // Keep previous price if fetch fails - only log in debug mode
       debugPrint('Price fetch failed (keeping previous): $e');
     } finally {
-      notifyListeners();
+      if (!silent) notifyListeners();
     }
   }
 
-  Future<void> fetchTransactions(String address) async {
+  Future<void> fetchTransactions(String address, {bool silent = false}) async {
     if (_isLoading) return;
-    _isLoading = true;
+    
+    if (!silent) {
+      _isLoading = true;
+      notifyListeners();
+    }
 
     final url =
         '${Config.explorerUrl}${Config.getAddressTxsEndpoint}?address=$address&limit=$_maxTransactions';
@@ -98,7 +108,7 @@ class BlockchainProvider with ChangeNotifier {
         if (data is Map && data.containsKey('transactions')) {
           final List<dynamic> txsList = data['transactions'] ?? [];
 
-          // Implement client-side pagination since API returns all transactions
+          // Implement client-side pagination
           List<dynamic> paginatedTxs = txsList.skip(_startIndex).take(_limit).toList();
 
           if (paginatedTxs.isEmpty) {
@@ -108,6 +118,11 @@ class BlockchainProvider with ChangeNotifier {
                 paginatedTxs.whereType<Map<String, dynamic>>().toList();
             List<Map<String, dynamic>> transactions =
                 convertNewApiFormat(castedData);
+            
+            if (silent) {
+              _transactions.clear();
+            }
+            
             _transactions.addAll(transactions);
             _startIndex += _limit;
 
@@ -125,8 +140,10 @@ class BlockchainProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('Error fetching transactions: $e');
     } finally {
-      await fetchPrice();
-      _isLoading = false;
+      await fetchPrice(silent: silent);
+      if (!silent) {
+        _isLoading = false;
+      }
       notifyListeners();
     }
   }

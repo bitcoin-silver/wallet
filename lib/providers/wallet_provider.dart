@@ -24,6 +24,7 @@ class WalletProvider with ChangeNotifier {
   double? _pendingBalance = 0.0;
   List _utxos = [];
   bool _isLoading = false;
+  bool _isPending = false;
   String? _lastError;
   DateTime? _lastFetch;
   bool _isCurrentlySending = false;
@@ -52,23 +53,44 @@ class WalletProvider with ChangeNotifier {
   double? get pendingBalance => _pendingBalance;
   List? get utxos => _utxos;
   bool get isLoading => _isLoading;
+  bool get isPending => _isPending;
   String? get lastError => _lastError;
-  bool get hasPendingTransactions => _pendingTransactions.isNotEmpty || (_pendingBalance != null && _pendingBalance! > 0);
-  int get pendingTransactionsCount => _pendingTransactions.length + ((_pendingBalance != null && _pendingBalance! > 0) ? 1 : 0);
+  bool get hasPendingTransactions => _isPending || _pendingTransactions.isNotEmpty || (_pendingBalance != null && _pendingBalance! > 0);
+  int get pendingTransactionsCount {
+    // Locally tracked outgoing transactions
+    int outgoing = _pendingTransactions.length;
+
+    // Incoming unconfirmed UTXOs (filtering out our own change to avoid double counting)
+    int incoming = _utxos.where((u) =>
+      u['confirmations'] == 0 &&
+      !_pendingTransactions.containsKey(u['txid']) &&
+      u['txid'] != 'pending_marker'
+    ).length;
+
+    // Ensure we at least show 1 if _isPending is true but UTXOs aren't visible yet
+    int count = outgoing + incoming;
+    if (count == 0 && _isPending) return 1;
+    return count;
+  }
 
   WalletService get walletService => _ws; // Public getter for WalletService
 
   // Display balance - shows actual spendable balance considering consumed UTXOs and incoming funds
   double? get displayBalance {
-    // Start with confirmed balance from available UTXOs
-    double total = _balance ?? 0.0;
+    // 1. Sum up all UTXOs in our filtered list (_utxos).
+    // This list contains:
+    // - All confirmed UTXOs EXCEPT those spent by our pending transactions.
+    // - All unconfirmed UTXOs from the network (incoming funds).
+    // - Our change outputs IF they are already visible in the mempool.
+    double total = _utxos.fold(0.0, (sum, u) => sum + (u['amount'] as num).toDouble());
 
-    // Add unconfirmed incoming funds (excluding our own change to avoid double counting)
-    total += _pendingBalance ?? 0.0;
-
-    // Add expected change from pending transactions back to the wallet
+    // 2. Add expected change from pending transactions that are NOT yet visible in _utxos
+    // (e.g., just sent, not yet in mempool or not yet detected by the node)
     for (final tx in _pendingTransactions.values) {
-      total += tx.changeAmount;
+      bool changeAlreadyInUtxos = _utxos.any((u) => u['txid'] == tx.txid);
+      if (!changeAlreadyInUtxos) {
+        total += tx.changeAmount;
+      }
     }
 
     return total < 0 ? 0.0 : total;
@@ -88,16 +110,22 @@ class WalletProvider with ChangeNotifier {
     );
   }
 
-  /// Handle confirmed transaction notification - refresh balance
+  /// Handle transaction notification - refresh balance and pending state
   void _handleTransactionReceived(String txid, String amount, String address) {
-    debugPrint('✅ Transaction confirmed: $amount BTCS - Refreshing balance');
+    debugPrint('🔔 Transaction activity detected: $amount BTCS - Refreshing...');
     // Safety check: only process if wallet is loaded
     if (_address == null) {
       debugPrint('⚠️ Wallet not loaded yet, skipping transaction notification');
       return;
     }
-    // Refresh UTXOs to update balance (called only for confirmed transactions)
-    fetchUtxos(force: true);
+    // Refresh UTXOs to update balance and pending state
+    fetchUtxos(force: true, silent: true);
+    
+    // Also trigger blockchain provider to refresh transaction list and chart
+    if (_onTransactionTapped != null) {
+      _onTransactionTapped!(_address!);
+    }
+
     notifyListeners();
   }
 
@@ -227,6 +255,7 @@ class WalletProvider with ChangeNotifier {
     _mnemonic = null;
     _balance = 0.0;
     _pendingBalance = 0.0;
+    _isPending = false;
     _utxos = [];
     _pendingTxids.clear();
     _pendingTimestamps.clear();
@@ -259,11 +288,11 @@ class WalletProvider with ChangeNotifier {
     }
   }
 
-
   Future<void> fetchUtxos({bool force = false, bool silent = false}) async {
     if (_address == null) {
       _balance = 0.0;
       _pendingBalance = 0.0;
+      _isPending = false;
       _utxos = [];
       notifyListeners();
       return;
@@ -285,13 +314,48 @@ class WalletProvider with ChangeNotifier {
 
       _cleanupPendingTransactions();
 
-      // Get all UTXOs (Confirmed + Mempool) using the standard logic from debug folder
+      // 1. Get all UTXOs (Confirmed + Mempool)
+      // Note: In this project, _ws already handles RPC configuration internally
       final allUtxos = await _ws.getUtxos(_address!);
-      
-      // Calculate balances using the standard logic
+
+      // 2. Calculate confirmed balance
       _balance = _ws.calculateBalance(allUtxos);
+      
+      // 3. Calculate unconfirmed balance
       _pendingBalance = _ws.calculateUnconfirmedBalance(allUtxos);
       
+      // Track if any mempool activity is going on
+      _isPending = allUtxos.any((u) => u['confirmations'] == 0 || u['txid'] == 'pending_marker');
+
+      // Check if any of our locally tracked pending transactions are now confirmed or dropped
+      final mempoolTxidsInUtxos = allUtxos
+          .where((u) => u['confirmations'] == 0 && u['txid'] != 'pending_marker')
+          .map((u) => u['txid'] as String)
+          .toSet();
+
+      final confirmedTxs = <String>[];
+      for (final txid in _pendingTxids) {
+        bool inConfirmedUtxos = allUtxos.any((u) => u['txid'] == txid && u['confirmations'] > 0);
+        bool inMempool = mempoolTxidsInUtxos.contains(txid);
+        
+        if (inConfirmedUtxos) {
+          confirmedTxs.add(txid);
+        } else if (!inMempool) {
+          // If it's not in mempool and not in confirmed UTXOs, it might be dropped.
+          // We check the timestamp to give it some time to propagate before removing.
+          final timestamp = _pendingTimestamps[txid];
+          if (timestamp != null && DateTime.now().difference(timestamp).inMinutes > 30) {
+            confirmedTxs.add(txid); // Mark for removal from local tracking
+          }
+        }
+      }
+
+      for (final txid in confirmedTxs) {
+        _pendingTxids.remove(txid);
+        _pendingTimestamps.remove(txid);
+        _pendingTransactions.remove(txid);
+      }
+
       // Also lock UTXOs consumed by our local pending transactions to prevent double-spending
       final lockedUtxos = <String>{};
       for (final pendingTx in _pendingTransactions.values) {
@@ -301,46 +365,19 @@ class WalletProvider with ChangeNotifier {
       }
 
       // Filter out locally locked UTXOs and pending markers for internal storage
+      // This list will be used by displayBalance
       _utxos = allUtxos.where((utxo) {
         final utxoId = '${utxo['txid']}:${utxo['vout']}';
         return utxo['txid'] != 'pending_marker' && !lockedUtxos.contains(utxoId);
       }).toList();
 
-      // Check if our local pending transactions are confirmed
-      if (_pendingTxids.isNotEmpty) {
-        final confirmedTxs = <String>[];
-        try {
-          final batchRequests = _pendingTxids.map((txid) => {
-            'method': 'getrawtransaction',
-            'params': [txid, true],
-          }).toList();
-
-          final batchResults = await _ws.batchRpcRequest(batchRequests);
-
-          for (int i = 0; i < batchResults.length; i++) {
-            final tx = batchResults[i];
-            final pendingTxid = _pendingTxids.elementAt(i);
-
-            if (tx != null && tx['result'] != null) {
-              final txData = tx['result'];
-              if (txData['confirmations'] != null && txData['confirmations'] > 0) {
-                confirmedTxs.add(pendingTxid);
-              }
-            }
-          }
-        } catch (_) {}
-
-        // Clean up confirmed local pending transactions
-        for (final txid in confirmedTxs) {
-          _pendingTxids.remove(txid);
-          _pendingTimestamps.remove(txid);
-          _pendingTransactions.remove(txid);
-        }
-      }
+      debugPrint('💰 Wallet sync: ${_utxos.length} total UTXOs, Pending: $_isPending, Balance: $_balance');
 
       _lastFetch = DateTime.now();
+      _lastError = null;
 
     } catch (e) {
+      debugPrint('Error in fetchUtxos: $e');
       _lastError = 'Failed to fetch UTXOs: $e';
     } finally {
       if (!silent) {
@@ -603,6 +640,9 @@ class WalletProvider with ChangeNotifier {
           consumedUtxos: List<Map<String, dynamic>>.from(createResult['consumedUtxos'] ?? []),
           changeAmount: createResult['changeAmount'] ?? 0.0,
         );
+
+        // Update local UTXOs immediately to reflect spent inputs and pending state
+        await fetchUtxos(force: true, silent: true);
 
         // Notify listeners to update UI with new pending state
         notifyListeners();

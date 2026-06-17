@@ -354,8 +354,8 @@ class NotificationService {
       debugPrint('  Address: $address');
       debugPrint('  Confirmations: $confirmations');
 
-      // Trigger callback only if confirmed (to refresh balance)
-      if (txid != null && amount != null && address != null && confirmations >= 1) {
+      // Trigger callback for both unconfirmed (to show yellow card) and confirmed transactions
+      if (txid != null && amount != null && address != null) {
         onTransactionReceived?.call(txid, amount, address);
       }
     } else if (message.data['type'] == 'chat_message') {

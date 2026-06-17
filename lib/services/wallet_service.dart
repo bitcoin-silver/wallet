@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:pointycastle/digests/ripemd160.dart';
 import 'package:bip32/bip32.dart' as bip32;
@@ -208,7 +208,7 @@ class WalletService {
         .asMap()
         .entries
         .map((entry) => {
-              'jsonrpc': '1.0',
+              'jsonrpc': '2.0',
               'id': entry.key,
               'method': entry.value['method'],
               'params': entry.value['params'] ?? [],
@@ -286,26 +286,43 @@ class WalletService {
 
     // 2. Get mempool txids
     final List<Map<String, dynamic>> decodedMempool = [];
+    bool rpcMempoolSucceeded = false;
     final mempoolResult = await rpcRequest('getrawmempool', [false]);
-    
-    if (mempoolResult != null && mempoolResult['result'] != null) {
-      final List<dynamic> txids = mempoolResult['result'] as List<dynamic>;
-      
-      // Batch process mempool to find relevant transactions
-      const batchSize = 25;
-      for (int i = 0; i < txids.length; i += batchSize) {
-        final chunk = txids.skip(i).take(batchSize).toList();
-        final batchRequests = chunk.map((txid) => {
-          'method': 'getrawtransaction',
-          'params': [txid, true],
-        }).toList();
 
-        final batchResults = await batchRpcRequest(batchRequests);
-        for (final res in batchResults) {
+    if (mempoolResult != null && mempoolResult['result'] != null) {
+      rpcMempoolSucceeded = true;
+      final List<dynamic> txids = mempoolResult['result'] as List<dynamic>;
+
+      // Use individual calls as in the working debug implementation
+      // but with Future.wait for better performance
+      const maxConcurrent = 10;
+      for (int i = 0; i < txids.length; i += maxConcurrent) {
+        final chunk = txids.skip(i).take(maxConcurrent).toList();
+        final tasks = chunk.map((txid) => rpcRequest('getrawtransaction', [txid, true]));
+        final results = await Future.wait(tasks);
+        
+        for (final res in results) {
           if (res != null && res['result'] != null) {
             decodedMempool.add(res['result'] as Map<String, dynamic>);
           }
         }
+      }
+    }
+
+    // Fallback: ONLY if RPC failed (not if mempool was just empty)
+    if (!rpcMempoolSucceeded) {
+      try {
+        // Try to get mempool from explorer if RPC fails
+        final explorerResponse = await http.get(Uri.parse('${Config.explorerUrl}/api/mempool')).timeout(const Duration(seconds: 10));
+        if (explorerResponse.statusCode == 200) {
+          final decoded = jsonDecode(explorerResponse.body);
+          final List<dynamic> explorerTxs = (decoded is List) ? decoded : (decoded['transactions'] ?? []);
+          for (var tx in explorerTxs) {
+            decodedMempool.add(tx as Map<String, dynamic>);
+          }
+        }
+      } catch (e) {
+        debugPrint('Explorer mempool fallback failed: $e');
       }
     }
 
@@ -315,15 +332,18 @@ class WalletService {
     // 3. Process Decoded Mempool (Detect spends and incoming)
     final spentInMempool = <String>{};
     final incomingFromMempool = <Map<String, dynamic>>[];
+    final normalizedAddress = address.toLowerCase();
+
+    debugPrint('Processing ${decodedMempool.length} mempool transactions for $address');
 
     for (var data in decodedMempool) {
       final String txid = data['txid'] ?? '';
-      
-      // Check inputs (detect our coins being spent)
+
+      // Check inputs (detect our coins being spent) Safely!
       final vins = data['vin'] as List<dynamic>? ?? [];
       for (var vin in vins) {
-        final String? vinTxid = vin['txid'];
-        final dynamic vinVout = vin['vout'];
+        final String? vinTxid = vin['txid'] ?? vin['prev_txid'];
+        final dynamic vinVout = vin['vout'] ?? vin['prev_vout'];
         if (vinTxid != null && vinVout != null) {
           spentInMempool.add('$vinTxid:$vinVout');
         }
@@ -333,10 +353,24 @@ class WalletService {
       final vouts = data['vout'] as List<dynamic>? ?? [];
       for (var vout in vouts) {
         final scriptPubKey = vout['scriptPubKey'] as Map<String, dynamic>? ?? {};
-        final String? singleAddr = scriptPubKey['address'];
-        final List<dynamic> addresses = scriptPubKey['addresses'] as List<dynamic>? ?? [];
         
-        if (singleAddr == address || addresses.contains(address)) {
+        final List<dynamic> addresses = [];
+        if (scriptPubKey.containsKey('addresses')) {
+          addresses.addAll(scriptPubKey['addresses'] as List<dynamic>);
+        }
+        if (scriptPubKey.containsKey('address')) {
+          addresses.add(scriptPubKey['address']);
+        }
+
+        bool isMine = false;
+        for (var addr in addresses) {
+          if (addr.toString().toLowerCase() == normalizedAddress) {
+            isMine = true;
+            break;
+          }
+        }
+
+        if (isMine) {
           incomingFromMempool.add({
             'txid': txid,
             'vout': vout['n'] ?? 0,

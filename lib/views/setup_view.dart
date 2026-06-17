@@ -352,6 +352,7 @@ class SetupView extends StatelessWidget {
     }
 
     // Otherwise treat as WIF
+    if (!context.mounted) return;
     _processWallet(context, input);
   }
 
