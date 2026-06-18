@@ -28,7 +28,7 @@ android {
         applicationId = "top.bitcoinsilver.wallet2025"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 54
+        versionCode = 55
         versionName = "BTCS-W-5.3"
     }
 
