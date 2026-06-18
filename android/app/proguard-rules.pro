@@ -8,6 +8,17 @@
 -keep class io.flutter.embedding.** { *; }
 -keep class io.flutter.embedding.engine.** { *; }
 
+# General attributes
+-keepattributes Signature
+-keepattributes *Annotation*
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+
+# Keep native methods
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
 # Google Play Core (for deferred components)
 -keep class com.google.android.play.core.** { *; }
 -dontwarn com.google.android.play.core.**
@@ -17,24 +28,6 @@
 -keep class com.google.android.gms.** { *; }
 -dontwarn com.google.firebase.**
 -dontwarn com.google.android.gms.**
-
-# Gson (if used)
--keepattributes Signature
--keepattributes *Annotation*
--dontwarn sun.misc.**
--keep class com.google.gson.** { *; }
--keep class * implements com.google.gson.TypeAdapterFactory
--keep class * implements com.google.gson.JsonSerializer
--keep class * implements com.google.gson.JsonDeserializer
-
-# Keep native methods
--keepclasseswithmembernames class * {
-    native <methods>;
-}
-
-# Preserve line numbers for debugging
--keepattributes SourceFile,LineNumberTable
--renamesourcefileattribute SourceFile
 
 # WebSocket and HTTP
 -dontwarn okhttp3.**
@@ -58,3 +51,11 @@
 -keep class androidx.security.crypto.** { *; }
 -keep class com.google.crypto.tink.** { *; }
 -dontwarn com.google.crypto.tink.**
+
+# Gson (Uncomment if using Gson)
+# -dontwarn com.google.gson.**
+# -dontwarn sun.misc.**
+# -keep class com.google.gson.** { *; }
+# -keep class * implements com.google.gson.TypeAdapterFactory
+# -keep class * implements com.google.gson.JsonSerializer
+# -keep class * implements com.google.gson.JsonDeserializer

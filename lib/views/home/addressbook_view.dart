@@ -100,6 +100,8 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
       address: address,
     );
 
+    if (!mounted) return;
+
     setState(() {
       if (success) {
         _registrationMessage = 'Successfully registered as @$username';
@@ -166,6 +168,8 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
       // Get export data from provider
       final result = await provider.exportToFile();
 
+      if (!mounted) return;
+
       if (!result['success']) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -203,11 +207,13 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
       final bytes = utf8.encode(jsonData);
 
       // Use file picker to save the file with bytes
-      String? outputPath = await FilePicker.platform.saveFile(
+      String? outputPath = await FilePicker.saveFile(
         dialogTitle: 'Save Contacts',
         fileName: 'BTCS_contacts.btcs',
         bytes: Uint8List.fromList(bytes),
       );
+
+      if (!mounted) return;
 
       if (outputPath != null) {
 
@@ -281,13 +287,14 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
 
     try {
       // Open file picker
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      PlatformFile? file = await FilePicker.pickFile(
         type: FileType.any,
-        allowMultiple: false,
       );
 
-      if (result != null && result.files.single.path != null) {
-        final filePath = result.files.single.path!;
+      if (!mounted) return;
+
+      if (file != null && file.path != null) {
+        final filePath = file.path!;
 
         // Import the file
         final importResult = await provider.importFromFile(filePath);
@@ -988,11 +995,11 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
             text: provider.isFavorite(entry) ? 'Remove from Favorites' : 'Add to Favorites',
             isPrimary: !provider.isFavorite(entry),
             icon: provider.isFavorite(entry) ? Icons.star : Icons.star_border,
-            onPressed: () {
+            onPressed: () async {
               if (provider.isFavorite(entry)) {
-                provider.removeFromFavorites(entry);
+                await provider.removeFromFavorites(entry);
               } else {
-                provider.addToFavorites(entry);
+                await provider.addToFavorites(entry);
               }
             },
           ),
@@ -1020,7 +1027,7 @@ class _AddressbookViewState extends State<AddressbookView> with SingleTickerProv
           ),
           child: const Icon(Icons.delete, color: Colors.white),
         ),
-        onDismissed: (_) => provider.removeFromFavorites(entry),
+        onDismissed: (_) async => await provider.removeFromFavorites(entry),
         child: Material(
           color: Colors.transparent,
           child: InkWell(

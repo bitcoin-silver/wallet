@@ -1,11 +1,8 @@
-@file:Suppress("DEPRECATION")
-
 import java.util.Properties
 import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
-    //id("org.jetbrains.kotlin.android")
     id("com.google.gms.google-services")
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -31,7 +28,7 @@ android {
         applicationId = "top.bitcoinsilver.wallet2025"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 53
+        versionCode = 54
         versionName = "BTCS-W-5.3"
     }
 
@@ -54,12 +51,6 @@ android {
     }
 }
 
-kotlin {
-    compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-    }
-}
-
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation("androidx.activity:activity-ktx:1.13.0")
@@ -67,10 +58,4 @@ dependencies {
 
 flutter {
     source = "../.."
-}
-
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-    }
 }

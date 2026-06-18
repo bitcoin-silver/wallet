@@ -353,24 +353,24 @@ class _SettingsViewState extends State<SettingsView> {
               ),
               const SizedBox(height: 16),
               const Text('Choose Phrase Length:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              Row(
-                children: [
-                  Radio<int>(
-                    value: 12,
-                    groupValue: migrationSeedWords,
-                    onChanged: (val) => setState(() => migrationSeedWords = val!),
-                    activeColor: Colors.cyanAccent,
-                  ),
-                  const Text('12 Words', style: TextStyle(color: Colors.white70)),
-                  const SizedBox(width: 20),
-                  Radio<int>(
-                    value: 24,
-                    groupValue: migrationSeedWords,
-                    onChanged: (val) => setState(() => migrationSeedWords = val!),
-                    activeColor: Colors.cyanAccent,
-                  ),
-                  const Text('24 Words', style: TextStyle(color: Colors.white70)),
-                ],
+              RadioGroup<int>(
+                groupValue: migrationSeedWords,
+                onChanged: (val) => setState(() => migrationSeedWords = val!),
+                child: Row(
+                  children: [
+                    Radio<int>(
+                      value: 12,
+                      activeColor: Colors.cyanAccent,
+                    ),
+                    const Text('12 Words', style: TextStyle(color: Colors.white70)),
+                    const SizedBox(width: 20),
+                    Radio<int>(
+                      value: 24,
+                      activeColor: Colors.cyanAccent,
+                    ),
+                    const Text('24 Words', style: TextStyle(color: Colors.white70)),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
               const Text(
