@@ -21,7 +21,7 @@ class Config {
   static const String btcsCode = '____BTCS';
 
   // Backend API Configuration (for chat and other features)
-  static const String apiBaseUrl = 'https://btcs-vps13.duckdns.org';
+  static const String apiBaseUrl = 'https://bitcoinsilver.eu';
   static const String apiKey = String.fromEnvironment('NOTIFICATION_API_KEY', defaultValue: '');
   static const String chatSecret = String.fromEnvironment('CHAT_SECRET', defaultValue: '');
 }

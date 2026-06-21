@@ -28,8 +28,8 @@ android {
         applicationId = "top.bitcoinsilver.wallet2025"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 55
-        versionName = "BTCS-W-5.3"
+        versionCode = 56
+        versionName = "BTCS-W-5.4"
     }
 
     signingConfigs {

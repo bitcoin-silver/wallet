@@ -1,4 +1,4 @@
-# Bitcoin Silver Android Wallet 
+# Bitcoin Silver Android Wallet
 
 <p align="center">
   <img src="assets/logo.png" alt="S256 Wallet" width="430">
@@ -43,9 +43,10 @@ flutter build apk --release --obfuscate --split-debug-info=build/app/outputs/sym
 
 ## Configuration
 
-The wallet connects to the public RPC proxy at `https://btcs-vps13.duckdns.org/btcs-rpc` by default (no authentication required).
+The wallet connects to the public RPC proxy at `https://bitcoinsilver.eu/btcs-rpc` by default (no authentication required).
 
 For custom RPC node, create `dart_defines.json`:
+
 ```json
 {
   "RPC_URL": "http://your-rpc:port",
@@ -70,6 +71,7 @@ flutter build ios --release --dart-define-from-file=dart_defines.json
 ```
 
 Output locations:
+
 - APK: `build/app/outputs/flutter-apk/app-release.apk`
 - AAB: `build/app/outputs/bundle/release/app-release.aab`
 
@@ -95,8 +97,9 @@ Contributions are welcome! Please:
 For bugs or feature requests, please open an issue.
 
 ```bash
-- Current Google Play version 5.2
+- Current Google Play version 5.4
 ```
+
 <a href="https://play.google.com/store/apps/details?id=top.bitcoinsilver.wallet2025&pli=1">
     <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="60">
 </a>

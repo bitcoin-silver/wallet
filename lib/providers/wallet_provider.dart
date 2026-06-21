@@ -7,7 +7,7 @@ import 'package:bitcoinsilver_wallet/services/notification_service.dart';
 import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
 
 // Backend URL - HTTPS endpoint
-const String backendUrl = 'https://btcs-vps13.duckdns.org';
+const String backendUrl = 'https://bitcoinsilver.eu';
 
 class WalletProvider with ChangeNotifier {
   // Use default storage (compatible with Play Store signing)

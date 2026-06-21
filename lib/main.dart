@@ -17,7 +17,7 @@ import 'package:bitcoinsilver_wallet/services/chat_notification_service.dart';
 // import 'package:bitcoinsilver_wallet/services/migration_service.dart';
 
 // Backend URL - HTTPS endpoint
-const String backendUrl = 'https://btcs-vps13.duckdns.org';
+const String backendUrl = 'https://bitcoinsilver.eu';
 
 // Global navigator key for navigation from notifications
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
