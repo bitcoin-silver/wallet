@@ -83,7 +83,20 @@ class BlockchainProvider with ChangeNotifier {
   }
 
   Future<void> fetchTransactions(String address, {bool silent = false}) async {
-    if (_isLoading) return;
+    if (_isLoading) {
+      if (!silent) return;
+
+      // If a foreground load is in progress, wait briefly and retry once the
+      // provider is free so resume/background refresh does not get skipped.
+      for (int i = 0; i < 20 && _isLoading; i++) {
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+
+      if (_isLoading) {
+        debugPrint('Skipping silent transaction refresh because loading is still active.');
+        return;
+      }
+    }
     
     if (!silent) {
       _isLoading = true;

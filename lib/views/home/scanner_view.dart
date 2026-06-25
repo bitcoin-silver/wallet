@@ -93,8 +93,15 @@ class _ScannerViewState extends State<ScannerView> with WidgetsBindingObserver {
       address = address.substring(0, queryIndex);
     }
 
-    // Convert to lowercase (Bech32 standard for addresses like bs1q...)
-    return address.trim().toLowerCase();
+    final normalized = address.trim();
+
+    // Bech32 addresses are case-insensitive and expected lowercase.
+    // Legacy Base58 addresses are case-sensitive and must preserve case.
+    if (normalized.toLowerCase().startsWith('bs')) {
+      return normalized.toLowerCase();
+    }
+
+    return normalized;
   }
 
   @override

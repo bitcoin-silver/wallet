@@ -67,6 +67,13 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
     if (state == AppLifecycleState.resumed) {
       // Refresh immediately when user returns to app
       _syncWalletData(silent: true);
+
+      // Some providers can briefly fail right after resume while networking
+      // settles; run one follow-up silent sync to avoid stale chart/tx lists.
+      Future.delayed(const Duration(seconds: 2), () {
+        if (!mounted) return;
+        _syncWalletData(silent: true);
+      });
     }
   }
 
@@ -804,32 +811,18 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Expanded(
-                                child: AnimatedOpacity(
-                                  opacity: hasPending ? 0.6 : 1.0,
-                                  duration: const Duration(milliseconds: 200),
-                                  child: ButtonWidget(
-                                    text: 'Send',
-                                    isPrimary: true,
-                                    icon: Icons.arrow_upward,
-                                    onPressed: hasPending
-                                        ? () {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Please wait for pending transactions to confirm'),
-                                          backgroundColor: Colors.orange,
-                                          duration: Duration(seconds: 2),
-                                        ),
-                                      );
-                                    }
-                                        : () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => const SendView(),
-                                        ),
-                                      );
-                                    },
-                                  ),
+                                child: ButtonWidget(
+                                  text: 'Send',
+                                  isPrimary: true,
+                                  icon: Icons.arrow_upward,
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const SendView(),
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
                               const SizedBox(width: 12),

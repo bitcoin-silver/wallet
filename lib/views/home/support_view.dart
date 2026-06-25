@@ -148,7 +148,7 @@ class SupportView extends StatelessWidget {
                 icon: Icons.code,
                 title: 'Developers',
                 subtitle: 'View our GitHub repository',
-                url: 'https://github.com/bitcoin-silver',
+                url: 'https://github.com/bitcoin-silver/wallet',
                 color: const Color(0xFF24292e),
                 iconColor: Colors.white,
               ),

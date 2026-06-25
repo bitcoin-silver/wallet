@@ -756,11 +756,11 @@ class _SettingsViewState extends State<SettingsView> {
                       ),
                     )
                   else if (_biometricAvailable)
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
+                    Material(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
+                        side: BorderSide(
                           color: Colors.white.withValues(alpha: 0.1),
                         ),
                       ),
@@ -813,11 +813,11 @@ class _SettingsViewState extends State<SettingsView> {
                   const SizedBox(height: 15),
 
                   // Push Notifications Toggle
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
+                  Material(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
+                      side: BorderSide(
                         color: Colors.white.withValues(alpha: 0.1),
                       ),
                     ),

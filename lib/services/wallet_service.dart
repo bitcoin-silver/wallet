@@ -8,8 +8,10 @@ import 'package:crypto/crypto.dart';
 import 'package:bech32/bech32.dart';
 import 'package:base_x/base_x.dart';
 import 'package:bip39/bip39.dart' as bip39;
+import 'package:hex/hex.dart';
 import 'package:bitcoinsilver_wallet/config.dart';
 import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
+import 'package:bitcoinsilver_wallet/services/btcs_signer.dart';
 
 class WalletService {
   final BaseXCodec base58 =
@@ -17,8 +19,6 @@ class WalletService {
   final RpcConfigService _rpcConfig;
 
   WalletService(this._rpcConfig);
-
-  RpcConfigService get rpcConfigService => _rpcConfig;
 
   String? generatePrivateKey() {
     final random = Random.secure();
@@ -169,21 +169,31 @@ class WalletService {
       'params': params ?? [],
     });
 
-    final response = await http.post(
-      Uri.parse(rpcUrl),
-      headers: headers,
-      body: body,
-    ).timeout(
-      const Duration(seconds: 30),
-      onTimeout: () {
-        throw Exception('RPC request timed out after 30 seconds');
-      },
-    );
+    try {
+      final response = await http.post(
+        Uri.parse(rpcUrl),
+        headers: headers,
+        body: body,
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('RPC request timed out after 30 seconds');
+        },
+      );
 
-    final decoded = jsonDecode(response.body);
-    //print('Response body: ${response.body}');
+      if (response.statusCode != 200) {
+        throw Exception('Server returned HTTP status code: ${response.statusCode}');
+      }
 
-    return decoded; // ✅ Always return the parsed body
+      final dynamic decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+
+      throw Exception('Invalid RPC response format received');
+    } catch (_) {
+      rethrow;
+    }
   }
 
   Future<List<Map<String, dynamic>?>> batchRpcRequest(
@@ -270,16 +280,29 @@ class WalletService {
       [{'desc': 'addr($address)'}]
     ]);
 
+    // Fetch current block height to compute real confirmations.
+    int currentHeight = 0;
+    final blockCountResult = await rpcRequest('getblockcount');
+    if (blockCountResult != null && blockCountResult['result'] != null) {
+      currentHeight = (blockCountResult['result'] as num).toInt();
+    }
+
     final List<Map<String, dynamic>> confirmedUtxos = [];
     if (result != null && result['result'] != null) {
       final unspents = result['result']['unspents'] as List<dynamic>? ?? [];
       for (var u in unspents) {
+        final int utxoHeight = (u['height'] as num?)?.toInt() ?? 0;
+        final int conf = currentHeight > 0 && utxoHeight > 0
+            ? currentHeight - utxoHeight + 1
+            : 1;
         confirmedUtxos.add({
           'txid': u['txid'],
           'vout': u['vout'],
-          'amount': (u['amount'] as num).toDouble(),
-          'height': u['height'],
-          'confirmations': 1, // Will be updated if height is available
+          'amount': (u['amount'] is num)
+              ? (u['amount'] as num).toDouble()
+              : double.tryParse(u['amount'].toString()) ?? 0.0,
+          'height': utxoHeight,
+          'confirmations': conf,
         });
       }
     }
@@ -332,7 +355,6 @@ class WalletService {
     // 3. Process Decoded Mempool (Detect spends and incoming)
     final spentInMempool = <String>{};
     final incomingFromMempool = <Map<String, dynamic>>[];
-    final normalizedAddress = address.toLowerCase();
 
     debugPrint('Processing ${decodedMempool.length} mempool transactions for $address');
 
@@ -353,28 +375,23 @@ class WalletService {
       final vouts = data['vout'] as List<dynamic>? ?? [];
       for (var vout in vouts) {
         final scriptPubKey = vout['scriptPubKey'] as Map<String, dynamic>? ?? {};
-        
-        final List<dynamic> addresses = [];
-        if (scriptPubKey.containsKey('addresses')) {
-          addresses.addAll(scriptPubKey['addresses'] as List<dynamic>);
-        }
-        if (scriptPubKey.containsKey('address')) {
-          addresses.add(scriptPubKey['address']);
-        }
+        final addresses = scriptPubKey['addresses'] as List<dynamic>? ?? [];
+        final String? singleAddr = scriptPubKey['address'] as String?;
 
-        bool isMine = false;
-        for (var addr in addresses) {
-          if (addr.toString().toLowerCase() == normalizedAddress) {
-            isMine = true;
-            break;
+        if (addresses.contains(address) || (singleAddr != null && singleAddr == address)) {
+          // Safe numeric parsing for RPC/Explorer variants (num or string).
+          double parsedAmount = 0.0;
+          final rawValue = vout['value'];
+          if (rawValue is num) {
+            parsedAmount = rawValue.toDouble();
+          } else if (rawValue is String) {
+            parsedAmount = double.tryParse(rawValue) ?? 0.0;
           }
-        }
 
-        if (isMine) {
           incomingFromMempool.add({
             'txid': txid,
             'vout': vout['n'] ?? 0,
-            'amount': (vout['value'] as num? ?? 0.0).toDouble(),
+            'amount': parsedAmount,
             'confirmations': 0,
           });
           hasMempoolActivity = true;
@@ -420,5 +437,277 @@ class WalletService {
             u['txid'] != 'pending_marker' &&
             (u['confirmations'] as int) == 0)
         .fold(0.0, (sum, u) => sum + (u['amount'] as double));
+  }
+
+  Future<Map<String, dynamic>> sendTransactionLocallySigned({
+    required String privateKeyWif,
+    required String fromAddress,
+    required String toAddress,
+    required double amount,
+    List<Map<String, dynamic>>? preSelectedUtxos,
+    double? feeRateOverride,
+    bool isSweep = false,
+  }) async {
+    final allUtxos = await getUtxos(fromAddress);
+    final utxos = (preSelectedUtxos != null && preSelectedUtxos.isNotEmpty)
+        ? preSelectedUtxos.map((u) => Map<String, dynamic>.from(u)).toList()
+        : allUtxos
+            .where((u) =>
+                u['txid'] != 'pending_marker' &&
+                (u['confirmations'] as int) > 0)
+            .map((u) => Map<String, dynamic>.from(u))
+            .toList();
+
+    if (utxos.isEmpty) {
+      final hasPending = allUtxos.any(
+        (u) => u['txid'] != 'pending_marker' && (u['confirmations'] as int) == 0,
+      );
+      return {
+        'success': false,
+        'message': hasPending
+            ? 'Your funds are pending confirmation. Please wait approximately 10 minutes before sending again.'
+            : 'No confirmed funds available. Please wait approximately 10 minutes for your deposit to confirm.',
+      };
+    }
+
+    for (final utxo in utxos) {
+      if (utxo['scriptPubKey'] == null || (utxo['scriptPubKey'] as String).isEmpty) {
+        try {
+          final txOut = await rpcRequest('gettxout', [utxo['txid'], utxo['vout']]);
+          if (txOut?['result']?['scriptPubKey']?['hex'] != null) {
+            utxo['scriptPubKey'] = txOut!['result']['scriptPubKey']['hex'] as String;
+          }
+        } catch (_) {}
+      }
+
+      if (utxo['scriptPubKey'] == null || (utxo['scriptPubKey'] as String).isEmpty) {
+        try {
+          final generatedScript = BTCSSigner.scriptFromAddress(fromAddress);
+          utxo['scriptPubKey'] = HEX.encode(generatedScript);
+        } catch (_) {
+          return {
+            'success': false,
+            'message': 'Could not resolve scriptPubKey for UTXO ${utxo['txid']}.',
+          };
+        }
+      }
+    }
+
+    final totalAvailable =
+        utxos.fold(0.0, (sum, u) => sum + (u['amount'] as num).toDouble());
+    final bool shouldSweep = isSweep || amount >= totalAvailable - 0.00001;
+
+    utxos.sort((a, b) =>
+        ((b['amount'] as num).toDouble()).compareTo((a['amount'] as num).toDouble()));
+
+    double feeRate;
+    if (feeRateOverride != null) {
+      if (feeRateOverride <= 0) {
+        return {
+          'success': false,
+          'message': 'Invalid manual fee rate provided.',
+          'feeEstimateRequired': true,
+        };
+      }
+      feeRate = feeRateOverride;
+    } else {
+      try {
+        final r = await rpcRequest('estimatesmartfee', [6]);
+
+        if (r?['error'] != null) {
+          final rpcMsg = r!['error']['message'] as String? ?? 'RPC fee estimation error';
+          return {
+            'success': false,
+            'message': rpcMsg,
+            'feeEstimateRequired': true,
+            'feeEstimateError': rpcMsg,
+          };
+        }
+
+        final result = r?['result'];
+        if (result is! Map<String, dynamic>) {
+          return {
+            'success': false,
+            'message': 'Fee estimation returned an invalid response.',
+            'feeEstimateRequired': true,
+          };
+        }
+
+        final feerateRaw = result['feerate'];
+        if (feerateRaw is! num) {
+          final errors = result['errors'];
+          final details = (errors is List && errors.isNotEmpty)
+              ? errors.join(', ')
+              : 'No fee rate was returned by the node.';
+          return {
+            'success': false,
+            'message': details,
+            'feeEstimateRequired': true,
+            'feeEstimateError': details,
+          };
+        }
+
+        final estimatedFeeRate = feerateRaw.toDouble();
+        if (estimatedFeeRate <= 0) {
+          final errors = result['errors'];
+          final details = (errors is List && errors.isNotEmpty)
+              ? errors.join(', ')
+              : 'Node could not estimate a valid fee rate.';
+          return {
+            'success': false,
+            'message': details,
+            'feeEstimateRequired': true,
+            'feeEstimateError': details,
+          };
+        }
+
+        feeRate = estimatedFeeRate;
+      } catch (e) {
+        return {
+          'success': false,
+          'message': 'RPC fee estimation failed: $e',
+          'feeEstimateRequired': true,
+          'feeEstimateError': 'RPC fee estimation failed: $e',
+        };
+      }
+    }
+
+    final selectedUtxos = <Map<String, dynamic>>[];
+    double inputSum = 0.0;
+
+    for (int i = 0; i < utxos.length; i++) {
+      selectedUtxos.add(utxos[i]);
+      inputSum += (utxos[i]['amount'] as num).toDouble();
+
+      if (shouldSweep && i < utxos.length - 1) {
+        continue;
+      }
+
+      final inputCount = selectedUtxos.length;
+      final bool isDestLegacy = !toAddress.toLowerCase().startsWith(Config.addressPrefix);
+      final int destOutputSize = isDestLegacy ? 34 : 31;
+      const int changeOutputSize = 31;
+
+      int txSize = 11 + (inputCount * 68);
+      if (shouldSweep) {
+        txSize += destOutputSize;
+      } else {
+        txSize += destOutputSize + changeOutputSize;
+      }
+
+      final actualFee = double.parse((feeRate * txSize / 1000).toStringAsFixed(8));
+      final needed = shouldSweep ? actualFee : amount + actualFee;
+      if (inputSum < needed) {
+        continue;
+      }
+
+      final inputs = selectedUtxos.map((u) {
+        String? scriptHex = u['scriptPubKey'] as String?;
+        if (scriptHex == null || scriptHex.isEmpty) {
+          try {
+            final computedScript = BTCSSigner.scriptFromAddress(fromAddress);
+            scriptHex = HEX.encode(computedScript);
+          } catch (_) {
+            scriptHex = '';
+          }
+        }
+
+        return BTCSTxInput(
+          txid: u['txid'] as String,
+          vout: u['vout'] as int,
+          scriptPubKey: Uint8List.fromList(HEX.decode(scriptHex)),
+          satoshis: ((u['amount'] as num).toDouble() * 1e8).round(),
+        );
+      }).toList();
+
+      final outputs = <BTCSTxOutput>[];
+      int changeSats = 0;
+      int sendSats = 0;
+      try {
+        if (shouldSweep) {
+          final sweepSats = ((inputSum - actualFee) * 1e8).round();
+          if (sweepSats <= 546) {
+            return {'success': false, 'message': 'Balance too low to cover fees.'};
+          }
+          sendSats = sweepSats;
+          outputs.add(BTCSTxOutput(
+            scriptPubKey: BTCSSigner.scriptFromAddress(toAddress),
+            satoshis: sweepSats,
+          ));
+        } else {
+          sendSats = (amount * 1e8).round();
+          outputs.add(BTCSTxOutput(
+            scriptPubKey: BTCSSigner.scriptFromAddress(toAddress),
+            satoshis: sendSats,
+          ));
+
+          changeSats = ((inputSum - amount - actualFee) * 1e8).round();
+          if (changeSats > 546) {
+            outputs.add(BTCSTxOutput(
+              scriptPubKey: BTCSSigner.scriptFromAddress(fromAddress),
+              satoshis: changeSats,
+            ));
+          }
+        }
+      } catch (_) {
+        return {'success': false, 'message': 'Invalid destination address provided.'};
+      }
+
+      String signedHex;
+      try {
+        signedHex = BTCSSigner.signTransaction(
+          inputs: inputs,
+          outputs: outputs,
+          wif: privateKeyWif,
+        );
+      } catch (e) {
+        return {'success': false, 'message': 'Signing failed: $e'};
+      }
+
+      final sendResult = await rpcRequest('sendrawtransaction', [signedHex, 0]);
+
+      if (sendResult?['result'] != null) {
+        return {
+          'success': true,
+          'txid': sendResult!['result'],
+          'fee': actualFee,
+          'consumedUtxos': selectedUtxos
+              .map((u) => {
+                    'txid': u['txid'],
+                    'vout': u['vout'],
+                    'amount': (u['amount'] as num).toDouble(),
+                  })
+              .toList(),
+          'changeAmount': changeSats > 0 ? changeSats / 1e8 : 0.0,
+          'sentAmount': sendSats / 1e8,
+        };
+      }
+
+      final errMsg = sendResult?['error']?['message'] as String? ?? 'Unknown error';
+      final feeRateMatch = RegExp(r'new feerate ([\d.]+) BTCS/kvB').firstMatch(errMsg);
+      if (feeRateMatch != null) {
+        final suggestedFeeRate = double.parse(feeRateMatch.group(1)!);
+        return {
+          'success': false,
+          'message': 'Fee too low',
+          'suggestedFeeRate': suggestedFeeRate,
+          'currentFeeRate': feeRate,
+        };
+      }
+
+      if (errMsg.contains('insufficient fee') || errMsg.contains('rejecting replacement')) {
+        return {
+          'success': false,
+          'message': 'You have a pending transaction. Please wait approximately 20 minutes before sending another.',
+        };
+      }
+
+      return {'success': false, 'message': errMsg};
+    }
+
+    return {
+      'success': false,
+      'message': 'Insufficient funds. Available: ${inputSum.toStringAsFixed(8)} BTCS.',
+    };
   }
 }

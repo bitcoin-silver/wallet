@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bitcoinsilver_wallet/services/wallet_service.dart';
 import 'package:bitcoinsilver_wallet/services/notification_service.dart';
 import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
+import 'package:bitcoinsilver_wallet/services/btcs_signer.dart';
 
 // Backend URL - HTTPS endpoint
 const String backendUrl = 'https://bitcoinsilver.eu';
@@ -30,14 +31,233 @@ class WalletProvider with ChangeNotifier {
   bool _isCurrentlySending = false;
   DateTime? _lastSendAttempt;
   String? _rpcError; // New field to store RPC connection errors
+  String _message = '';
+  double _feeRate = 0.00001;
+  bool _feeEstimateAvailable = false;
+  bool _isFeeEstimateLoading = false;
+  String? _feeEstimateError;
+
+  // Advanced send coin-control state
+  List<Map<String, dynamic>> _availableUtxos = [];
+  final Set<String> _selectedUtxoKeys = {};
+  bool _isLoadingUtxos = false;
+  int _utxoPage = 0;
+  static const int _utxosPerPage = 15;
 
   // Getter for RPC error
   String? get rpcError => _rpcError;
+  String get message => _message;
+  double get feeRate => _feeRate;
+  bool get feeEstimateAvailable => _feeEstimateAvailable;
+  bool get isFeeEstimateLoading => _isFeeEstimateLoading;
+  String? get feeEstimateError => _feeEstimateError;
+
+  List<Map<String, dynamic>> get availableUtxos => _availableUtxos;
+  Set<String> get selectedUtxoKeys => _selectedUtxoKeys;
+  bool get isLoadingUtxos => _isLoadingUtxos;
+  int get utxoPage => _utxoPage;
+  int get utxoPageCount =>
+      _availableUtxos.isEmpty ? 1 : (_availableUtxos.length / _utxosPerPage).ceil();
+  int get selectedUtxoCount => _selectedUtxoKeys.length;
+
+  // Typical 1-input, 2-output transaction size estimate
+  double get estimatedSimpleFee =>
+      double.parse((_feeRate * 226 / 1000).toStringAsFixed(8));
+
+  double get selectedUtxoTotal => _availableUtxos
+      .where((u) => _selectedUtxoKeys.contains('${u['txid']}:${u['vout']}'))
+      .fold(0.0, (sum, u) => sum + (u['amount'] as num).toDouble());
+
+  List<Map<String, dynamic>> get selectedUtxoList => _availableUtxos
+      .where((u) => _selectedUtxoKeys.contains('${u['txid']}:${u['vout']}'))
+      .toList();
+
+  List<Map<String, dynamic>> get currentPageUtxos {
+    final start = _utxoPage * _utxosPerPage;
+    final end = (start + _utxosPerPage).clamp(0, _availableUtxos.length);
+    return _availableUtxos.sublist(start, end);
+  }
+
+  double get estimatedFee {
+    if (_selectedUtxoKeys.isEmpty) return 0.0;
+    final inputCount = _selectedUtxoKeys.length;
+    final txSize = 11 + (inputCount * 68) + 31 + 31;
+    return double.parse((_feeRate * txSize / 1000).toStringAsFixed(8));
+  }
+
+  double get estimatedNetSend {
+    final net = selectedUtxoTotal - estimatedFee;
+    return net > 0 ? net : 0.0;
+  }
 
   // Setter for RPC error
   void setRpcError(String? error) {
     _rpcError = error;
     notifyListeners();
+  }
+
+  void clearMessage() {
+    _message = '';
+    notifyListeners();
+  }
+
+  Future<bool> fetchFeeRate() async {
+    _isFeeEstimateLoading = true;
+    notifyListeners();
+
+    try {
+      final feeResult = await _ws.rpcRequest('estimatesmartfee', [6]);
+
+      if (feeResult?['error'] != null) {
+        _feeEstimateAvailable = false;
+        _feeEstimateError = feeResult!['error']['message'] as String? ??
+            'Fee estimation failed';
+        return false;
+      }
+
+      final result = feeResult?['result'];
+      if (result is! Map<String, dynamic>) {
+        _feeEstimateAvailable = false;
+        _feeEstimateError = 'Fee estimation returned an invalid response.';
+        return false;
+      }
+
+      final feerateRaw = result['feerate'];
+      if (feerateRaw is num) {
+        final feerate = feerateRaw.toDouble();
+        if (feerate > 0) {
+          _feeRate = feerate;
+          _feeEstimateAvailable = true;
+          _feeEstimateError = null;
+          return true;
+        }
+
+        if (feerate == -1) {
+          _feeEstimateAvailable = false;
+          final errors = result['errors'];
+          if (errors is List && errors.isNotEmpty) {
+            _feeEstimateError = errors.join(', ');
+          } else {
+            _feeEstimateError =
+                'Node could not estimate a network fee at this time.';
+          }
+          return false;
+        }
+      }
+
+      final errors = result['errors'];
+      _feeEstimateAvailable = false;
+      if (errors is List && errors.isNotEmpty) {
+        _feeEstimateError = errors.join(', ');
+      } else {
+        _feeEstimateError =
+            'No fee rate was returned by the node for this target.';
+      }
+      return false;
+    } catch (e) {
+      _feeEstimateAvailable = false;
+      _feeEstimateError = 'RPC fee estimation failed: $e';
+      return false;
+    } finally {
+      _isFeeEstimateLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchUtxosForCoinControl() async {
+    if (_address == null) return;
+
+    _isLoadingUtxos = true;
+    _availableUtxos = [];
+    _selectedUtxoKeys.clear();
+    _utxoPage = 0;
+    notifyListeners();
+
+    try {
+      await fetchUtxos(force: true, silent: true);
+
+      _availableUtxos = _utxos
+          .where((u) =>
+              u['txid'] != 'pending_marker' &&
+              (u['confirmations'] as int? ?? 0) > 0)
+          .map((u) => Map<String, dynamic>.from(u))
+          .toList();
+
+      _availableUtxos.sort((a, b) =>
+          ((b['amount'] as num).toDouble()).compareTo((a['amount'] as num).toDouble()));
+
+      await fetchFeeRate();
+    } finally {
+      _isLoadingUtxos = false;
+      notifyListeners();
+    }
+  }
+
+  void toggleUtxo(String key) {
+    if (_selectedUtxoKeys.contains(key)) {
+      _selectedUtxoKeys.remove(key);
+    } else {
+      _selectedUtxoKeys.add(key);
+    }
+    notifyListeners();
+  }
+
+  void selectAllUtxos() {
+    _selectedUtxoKeys
+      ..clear()
+      ..addAll(_availableUtxos.map((u) => '${u['txid']}:${u['vout']}'));
+    notifyListeners();
+  }
+
+  void clearUtxoSelection() {
+    _selectedUtxoKeys.clear();
+    notifyListeners();
+  }
+
+  void resetCoinControl() {
+    _availableUtxos = [];
+    _selectedUtxoKeys.clear();
+    _isLoadingUtxos = false;
+    _utxoPage = 0;
+    notifyListeners();
+  }
+
+  void setUtxoPage(int page) {
+    if (page < 0 || page >= utxoPageCount) return;
+    _utxoPage = page;
+    notifyListeners();
+  }
+
+  Future<bool> validateAddress(String address) async {
+    final candidate = address.trim();
+    if (candidate.isEmpty) return false;
+
+    try {
+      final result = await _ws.rpcRequest('validateaddress', [candidate]);
+      final bool rpcValid = result != null &&
+          result['result'] != null &&
+          result['result']['isvalid'] == true;
+
+      debugPrint(
+        'Address validation via RPC for $candidate => $rpcValid, raw: ${result?['result']}',
+      );
+
+      if (rpcValid) return true;
+    } catch (_) {
+      debugPrint('Address validation RPC call failed for $candidate; trying local fallback.');
+      // Fall through to local parser check.
+    }
+
+    // Fallback for BTCS networks where RPC validateaddress can reject
+    // otherwise valid BTCS legacy/bech32 formats.
+    try {
+      BTCSSigner.scriptFromAddress(candidate);
+      debugPrint('Address validation local fallback accepted $candidate.');
+      return true;
+    } catch (_) {
+      debugPrint('Address validation local fallback rejected $candidate.');
+      return false;
+    }
   }
 
   // Pending transaction tracking
@@ -325,7 +545,8 @@ class WalletProvider with ChangeNotifier {
       _pendingBalance = _ws.calculateUnconfirmedBalance(allUtxos);
       
       // Track if any mempool activity is going on
-      _isPending = allUtxos.any((u) => u['confirmations'] == 0 || u['txid'] == 'pending_marker');
+        _isPending = allUtxos.any((u) => u['confirmations'] == 0 || u['txid'] == 'pending_marker') ||
+          _pendingTransactions.isNotEmpty;
 
       // Check if any of our locally tracked pending transactions are now confirmed or dropped
       final mempoolTxidsInUtxos = allUtxos
@@ -375,10 +596,14 @@ class WalletProvider with ChangeNotifier {
 
       _lastFetch = DateTime.now();
       _lastError = null;
+      if (_message.contains('Connection lost')) {
+        _message = '';
+      }
 
     } catch (e) {
       debugPrint('Error in fetchUtxos: $e');
       _lastError = 'Failed to fetch UTXOs: $e';
+      _message = '⚠️ Connection lost. Displaying cached balances.';
     } finally {
       if (!silent) {
         _isLoading = false;
@@ -387,172 +612,10 @@ class WalletProvider with ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>> createTransaction(
-      String address,
-      double? amount, {
-        double? feeRateOverride,
-        bool isSweep = false,
-      }) async {
-
-    if (!isSweep && (amount == null || amount <= 0)) {
-      return {
-        'success': false,
-        'message': 'Invalid amount',
-      };
-    }
-
-    // Fetch fresh UTXOs
-    await fetchUtxos(force: true);
-
-    if (_utxos.isEmpty) {
-      return {
-        'success': false,
-        'message': 'No confirmed UTXOs available. Please wait for confirmations.',
-      };
-    }
-
-    // For sweep, we use all UTXOs
-    if (isSweep) {
-      double inputSum = _utxos.fold(0.0, (sum, utxo) => sum + (utxo['amount'] as num).toDouble());
-      List<Map<String, dynamic>> selectedUtxos = _utxos.map((utxo) => {
-        'txid': utxo['txid'],
-        'vout': utxo['vout'],
-      }).toList();
-
-      // Get fee rate
-      double feeRate = feeRateOverride ?? 0.00001;
-      // ... (rest of fee rate logic)
-      try {
-        if (feeRateOverride == null) {
-          final feeResult = await _ws.rpcRequest('estimatesmartfee', [6]);
-          feeRate = feeResult?['result']?['feerate'] ?? 0.00001;
-          if (feeRate <= 0) feeRate = 0.00001;
-        }
-      } catch (_) {
-        feeRate = 0.00001;
-      }
-
-      final txSize = 10 + (selectedUtxos.length * 148) + (1 * 34); // Only 1 output for sweep
-      final fee = (feeRate * txSize / 1000);
-      final actualFee = double.parse(fee.toStringAsFixed(8));
-      final sweepAmount = double.parse((inputSum - actualFee).toStringAsFixed(8));
-
-      if (sweepAmount <= 0.00000546) {
-        return {
-          'success': false,
-          'message': 'Balance too low to cover transaction fees.',
-        };
-      }
-
-      final outputs = <String, dynamic>{
-        address: sweepAmount,
-      };
-
-      final createRawResult = await _ws.rpcRequest('createrawtransaction', [selectedUtxos, outputs]);
-      if (createRawResult == null || createRawResult['result'] == null) {
-        return {'success': false, 'message': 'Failed to create sweep transaction'};
-      }
-
-      return {
-        'success': true,
-        'result': createRawResult['result'],
-        'fee': actualFee,
-        'toAddress': address,
-        'consumedUtxos': selectedUtxos.map((utxo) {
-          final fullUtxo = _utxos.firstWhere((u) => u['txid'] == utxo['txid'] && u['vout'] == utxo['vout']);
-          return {'txid': utxo['txid'], 'vout': utxo['vout'], 'amount': fullUtxo['amount'] ?? 0.0};
-        }).toList(),
-        'changeAmount': 0.0,
-      };
-    }
-
-    // Sort UTXOs by amount (largest first)
-    _utxos.sort((a, b) => (b['amount'] as num).toDouble().compareTo((a['amount'] as num).toDouble()));
-
-    // Get fee rate
-    double feeRate = feeRateOverride ?? 0.00001;
-    if (feeRateOverride == null) {
-      try {
-        final feeResult = await _ws.rpcRequest('estimatesmartfee', [6]);
-        feeRate = feeResult?['result']?['feerate'] ?? 0.00001;
-        if (feeRate <= 0) feeRate = 0.00001;
-      } catch (e) {
-        feeRate = 0.00001;
-      }
-    }
-
-    List<Map<String, dynamic>> selectedUtxos = [];
-    double inputSum = 0.0;
-
-    // Select UTXOs
-    for (var utxo in _utxos) {
-      selectedUtxos.add({
-        'txid': utxo['txid'],
-        'vout': utxo['vout'],
-      });
-
-      inputSum += utxo['amount'];
-
-      // Calculate transaction size and fee
-      final inputCount = selectedUtxos.length;
-      final outputCount = 2; // Assume change output
-      final txSize = 10 + (inputCount * 148) + (outputCount * 34);
-      final fee = (feeRate * txSize / 1000);
-
-      if (inputSum >= amount! + fee) {
-        final actualFee = double.parse(fee.toStringAsFixed(8));
-        final change = double.parse((inputSum - amount - actualFee).toStringAsFixed(8));
-
-        final outputs = <String, dynamic>{
-          address: double.parse(amount.toStringAsFixed(8)),
-        };
-
-        // Add change output if above dust threshold
-        if (change > 0.00000546) {
-          outputs[_address!] = change;
-        }
-
-        final createRawResult = await _ws.rpcRequest('createrawtransaction', [selectedUtxos, outputs]);
-
-        if (createRawResult == null || createRawResult['result'] == null) {
-          return {
-            'success': false,
-            'message': 'Failed to create raw transaction',
-          };
-        }
-
-        return {
-          'success': true,
-          'result': createRawResult['result'],
-          'fee': actualFee,
-          'toAddress': address,
-          'consumedUtxos': selectedUtxos.map((utxo) {
-            // Find the full UTXO data for tracking
-            final fullUtxo = _utxos.firstWhere(
-              (u) => u['txid'] == utxo['txid'] && u['vout'] == utxo['vout'],
-              orElse: () => {'amount': 0.0},
-            );
-            return {
-              'txid': utxo['txid'],
-              'vout': utxo['vout'],
-              'amount': fullUtxo['amount'] ?? 0.0,
-            };
-          }).toList(),
-          'changeAmount': change,
-        };
-      }
-    }
-
-    return {
-      'success': false,
-      'message': 'Insufficient funds. Available: ${inputSum.toStringAsFixed(8)} BTCS',
-    };
-  }
-
-  Future<Map<String, dynamic>> sendTransaction(
+    Future<Map<String, dynamic>> sendTransaction(
       String address,
       double amount,
-      {double? feeRate, bool isSweep = false}
+      {double? feeRate, bool isSweep = false, List<Map<String, dynamic>>? preSelectedUtxos}
       ) async {
 
     if (_privateKey == null || _address == null) {
@@ -583,50 +646,30 @@ class WalletProvider with ChangeNotifier {
 
     _isCurrentlySending = true;
     _lastSendAttempt = DateTime.now();
+    _message = '⏳ Sending transaction...';
+    notifyListeners();
 
-    // Create transaction
-    final createResult = await createTransaction(
-        address,
-        amount,
-        feeRateOverride: feeRate,
-        isSweep: isSweep,
+    final sendResult = await _ws.sendTransactionLocallySigned(
+      privateKeyWif: _privateKey!,
+      fromAddress: _address!,
+      toAddress: address,
+      amount: amount,
+      feeRateOverride: feeRate,
+      isSweep: isSweep,
+      preSelectedUtxos: preSelectedUtxos,
     );
 
-    if (!createResult['success']) {
+    if (!sendResult['success']) {
+      _message = '❌ ${sendResult['message'] ?? 'Transaction failed'}';
+      notifyListeners();
       _isCurrentlySending = false;
-      return createResult;
+      return sendResult;
     }
 
+    bool sentSuccessfully = false;
     try {
-      final rawTx = createResult['result'];
-
-      // Sign transaction
-      final signResult = await _ws.rpcRequest('signrawtransactionwithkey', [
-        rawTx,
-        [_privateKey]
-      ]);
-
-      if (signResult == null || signResult['result'] == null) {
-        return {
-          'success': false,
-          'message': 'Failed to sign transaction'
-        };
-      }
-
-      if (!signResult['result']['complete']) {
-        return {
-          'success': false,
-          'message': 'Transaction signature incomplete'
-        };
-      }
-
-      final signedTx = signResult['result']['hex'];
-
-      // Send transaction
-      final sendResult = await _ws.rpcRequest('sendrawtransaction', [signedTx, 0]);
-
-      if (sendResult != null && sendResult['result'] != null) {
-        final txid = sendResult['result'];
+      if (sendResult['txid'] != null) {
+        final txid = sendResult['txid'] as String;
 
         // Track pending transaction with consumed UTXOs
         _pendingTxids.add(txid);
@@ -634,11 +677,11 @@ class WalletProvider with ChangeNotifier {
         _pendingTransactions[txid] = PendingTransaction(
           txid: txid,
           amount: amount,
-          fee: createResult['fee'],
+          fee: sendResult['fee'],
           toAddress: address,
           timestamp: DateTime.now(),
-          consumedUtxos: List<Map<String, dynamic>>.from(createResult['consumedUtxos'] ?? []),
-          changeAmount: createResult['changeAmount'] ?? 0.0,
+          consumedUtxos: List<Map<String, dynamic>>.from(sendResult['consumedUtxos'] ?? []),
+          changeAmount: sendResult['changeAmount'] ?? 0.0,
         );
 
         // Update local UTXOs immediately to reflect spent inputs and pending state
@@ -649,17 +692,18 @@ class WalletProvider with ChangeNotifier {
 
         // Start smart confirmation checking
         _startSmartConfirmationChecking(txid);
+        sentSuccessfully = true;
 
         return {
           'success': true,
           'txid': txid,
           'message': 'Transaction sent successfully',
-          'fee': createResult['fee'],
+          'fee': sendResult['fee'],
         };
       }
 
       // Handle error
-      final errorMessage = sendResult?['error']?['message'] ?? 'Unknown error';
+      final errorMessage = sendResult['error']?['message'] ?? 'Unknown error';
 
       // Check for fee errors
       final feeRateMatch = RegExp(r'new feerate ([\d.]+) BTCS/kvB').firstMatch(errorMessage);
@@ -684,6 +728,16 @@ class WalletProvider with ChangeNotifier {
         'message': 'Error: ${e.toString()}',
       };
     } finally {
+      if (sentSuccessfully && sendResult['txid'] != null) {
+        _message = '✅ Sent! TXID: ${sendResult['txid']}';
+        notifyListeners();
+        Future.delayed(const Duration(seconds: 5), () {
+          if (_message.contains('✅')) {
+            _message = '';
+            notifyListeners();
+          }
+        });
+      }
       _isCurrentlySending = false;
     }
   }
@@ -736,6 +790,7 @@ class WalletProvider with ChangeNotifier {
     if (_privateKey == null || _address == null) return false;
 
     _isLoading = true;
+    _message = '⏳ Generating new seed phrase...';
     notifyListeners();
 
     try {
@@ -752,10 +807,13 @@ class WalletProvider with ChangeNotifier {
 
       if (currentBalance > 0.00001) {
         // 2. Sweep funds
+        _message = '⏳ Sweeping funds to new address...';
+        notifyListeners();
         final result = await sendTransaction(newAddress, currentBalance, isSweep: true);
 
         if (!result['success']) {
           _lastError = 'Migration failed: ${result['message']}';
+          _message = '❌ Migration failed: ${result['message']}';
           _isLoading = false;
           notifyListeners();
           return false;
@@ -764,12 +822,24 @@ class WalletProvider with ChangeNotifier {
 
       // Save new wallet
       await saveWallet(newAddress, newWif, mnemonic: mnemonic);
+
+      _message = currentBalance > 0
+          ? '✅ Migration successful! Funds swept.'
+          : '✅ Migration successful! (Empty wallet)';
       
       _isLoading = false;
       notifyListeners();
+
+      Future.delayed(const Duration(seconds: 5), () {
+        if (_message.contains('✅')) {
+          _message = '';
+          notifyListeners();
+        }
+      });
       return true;
     } catch (e) {
       _lastError = 'Migration error: $e';
+      _message = '❌ Migration error: $e';
       _isLoading = false;
       notifyListeners();
       return false;

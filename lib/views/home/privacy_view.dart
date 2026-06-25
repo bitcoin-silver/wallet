@@ -193,7 +193,7 @@ class _PrivacyViewState extends State<PrivacyView>
             Icon(Icons.calendar_today, size: 14, color: Colors.grey.shade400),
             const SizedBox(width: 6),
             Text(
-              'Last updated: September 5, 2024',
+              'Last updated: June 24, 2026',
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey.shade400,
@@ -278,7 +278,7 @@ class _PrivacyViewState extends State<PrivacyView>
         ],
         'subPoints': <String>[
           'Device Information: Information about the device, operating system, and app version used.',
-          'Transaction Data: Public blockchain data, such as sending and receiving addresses, as well as transaction amounts.',
+          'Transaction Data: Only the final signed transaction (in hex format) is transmitted to our network node for broadcasting. No private keys, addresses, or amounts are sent separately to our servers.',
         ],
       },
       {
@@ -306,7 +306,7 @@ class _PrivacyViewState extends State<PrivacyView>
         'title': 'Data Security',
         'color': Colors.red,
         'points': <String>[
-          'The security of your data is a top priority for us. Your private keys and sensitive information are stored only locally on your device and are never transmitted to us or third parties.',
+          'The security of your data is a top priority for us. Your private keys and sensitive information are stored only locally on your device and are never transmitted to us or third parties. All transaction signing is performed entirely on your device, only the resulting signed transaction hex is submitted to the network node for broadcasting.',
         ],
         'subPoints': <String>[],
       },

@@ -1139,42 +1139,51 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.copy, color: Colors.cyanAccent),
-              title: const Text('Copy Message', style: TextStyle(color: Colors.white)),
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: message.message));
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Message copied to clipboard'),
-                    backgroundColor: Colors.cyanAccent.withValues(alpha: 0.8),
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              },
-            ),
-            if (!message.isSystem)
-              ListTile(
-                leading: const Icon(Icons.reply, color: Colors.cyanAccent),
-                title: const Text('Reply', style: TextStyle(color: Colors.white)),
+            Material(
+              type: MaterialType.transparency,
+              child: ListTile(
+                leading: const Icon(Icons.copy, color: Colors.cyanAccent),
+                title: const Text('Copy Message', style: TextStyle(color: Colors.white)),
                 onTap: () {
+                  Clipboard.setData(ClipboardData(text: message.message));
                   Navigator.pop(context);
-                  setState(() {
-                    _replyToMessage = message;
-                  });
-                  _messageFocusNode.requestFocus();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Message copied to clipboard'),
+                      backgroundColor: Colors.cyanAccent.withValues(alpha: 0.8),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
                 },
               ),
+            ),
+            if (!message.isSystem)
+              Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                  leading: const Icon(Icons.reply, color: Colors.cyanAccent),
+                  title: const Text('Reply', style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    setState(() {
+                      _replyToMessage = message;
+                    });
+                    _messageFocusNode.requestFocus();
+                  },
+                ),
+              ),
             if (!isMyMessage && !message.isSystem)
-              ListTile(
-                leading: const Icon(Icons.person_add, color: Colors.cyanAccent),
-                title: const Text('Add to Address Book', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showAddToAddressBookDialog(message, displayName);
-                },
+              Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                  leading: const Icon(Icons.person_add, color: Colors.cyanAccent),
+                  title: const Text('Add to Address Book', style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showAddToAddressBookDialog(message, displayName);
+                  },
+                ),
               ),
             const SizedBox(height: 20),
           ],

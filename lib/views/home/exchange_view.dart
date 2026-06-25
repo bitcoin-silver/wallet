@@ -666,49 +666,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                     ),
                   ),
 
-                  const SizedBox(height: 30),
-
-                  // Markets Header
-                  SilverCard(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.show_chart,
-                          color: Colors.cyanAccent,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Available Markets',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          onPressed: () {
-                            blockchainProvider.fetchPrice();
-                            _fetchMoneySupply();
-                            _fetchAllVolumes();
-                          },
-                          icon: Icon(
-                            Icons.refresh,
-                            color: blockchainProvider.isLoading || _isLoadingSupply
-                                ? Colors.white38
-                                : Colors.white70,
-                            size: 20,
-                          ),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 10),
 
                   // Exchange Cards
                   _buildExchangeCard(
@@ -777,7 +735,9 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Bitcoin Silver (BTCS) is listed on multiple exchanges. Click on any exchange above to start trading. Always ensure you\'re using the official exchange links.',
+                          'Bitcoin Silver (BTCS) is available on the exchanges listed above. '
+                              'Links are provided for informational purposes only and do not constitute investment advice or an endorsement of any exchange. '
+                              'Always verify you are using the official exchange links before proceeding.',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 14,
@@ -788,8 +748,6 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                       ],
                     ),
                   ),
-
-                  const SizedBox(height: 40),
                 ],
               ),
             ),
