@@ -9,6 +9,7 @@ class BlockchainProvider with ChangeNotifier {
   final List<dynamic> _transactions = [];
   double _price = 0.0;
   bool _isLoading = false;
+  bool _pendingSilentRefresh = false;
   bool _hasMore = true;
   int _startIndex = 0;
   final int _limit = 50;
@@ -86,16 +87,10 @@ class BlockchainProvider with ChangeNotifier {
     if (_isLoading) {
       if (!silent) return;
 
-      // If a foreground load is in progress, wait briefly and retry once the
-      // provider is free so resume/background refresh does not get skipped.
-      for (int i = 0; i < 20 && _isLoading; i++) {
-        await Future.delayed(const Duration(milliseconds: 150));
-      }
-
-      if (_isLoading) {
-        debugPrint('Skipping silent transaction refresh because loading is still active.');
-        return;
-      }
+      // Queue the refresh so resume/background sync is retried once the
+      // active load finishes instead of being dropped.
+      _pendingSilentRefresh = true;
+      return;
     }
     
     if (!silent) {
@@ -158,6 +153,13 @@ class BlockchainProvider with ChangeNotifier {
         _isLoading = false;
       }
       notifyListeners();
+
+      if (_pendingSilentRefresh && !_isLoading) {
+        _pendingSilentRefresh = false;
+        Future.delayed(const Duration(milliseconds: 250), () {
+          loadBlockchain(address, silent: true);
+        });
+      }
     }
   }
 

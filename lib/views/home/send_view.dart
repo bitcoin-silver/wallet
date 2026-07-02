@@ -115,28 +115,11 @@ class _SendViewState extends State<SendView> {
       return false;
     }
 
-    // Check amount
-    final amount = double.tryParse(_amountController.text);
-    if (amount == null || amount <= 0) {
+    // Use the same amount rules shown in the inline amount validator.
+    final amountError = _amountError(walletProvider);
+    if (amountError != null) {
       setState(() {
-        _errorMessage = 'Please enter a valid amount.';
-      });
-      return false;
-    }
-
-    // Check balance
-    final balance = walletProvider.balance ?? 0.0;
-    if (amount > balance) {
-      setState(() {
-        _errorMessage = 'Insufficient balance. Available: ${balance.toStringAsFixed(8)} BTCS';
-      });
-      return false;
-    }
-
-    // Check for minimum amount (dust threshold)
-    if (amount < 0.00000546) {
-      setState(() {
-        _errorMessage = 'Amount is below minimum (0.00000546 BTCS).';
+        _errorMessage = amountError;
       });
       return false;
     }
@@ -538,11 +521,14 @@ class _SendViewState extends State<SendView> {
     if (value <= 0) return 'Amount must be greater than zero';
     if (value < 0.00000546) return 'Amount below dust threshold (0.00000546 BTCS)';
 
-    if (_advancedSend && provider.selectedUtxoCount > 0 && value > provider.selectedUtxoTotal) {
-      return 'Exceeds selected inputs (${provider.selectedUtxoTotal.toStringAsFixed(8)} BTCS)';
-    }
+    final spendable = _advancedSend && provider.selectedUtxoCount > 0
+        ? provider.selectedUtxoTotal
+        : (provider.balance ?? 0.0);
 
-    if (!_advancedSend && value > (provider.balance ?? 0.0)) {
+    if (value > spendable) {
+      if (_advancedSend && provider.selectedUtxoCount > 0) {
+        return 'Exceeds selected inputs (${provider.selectedUtxoTotal.toStringAsFixed(8)} BTCS)';
+      }
       return 'Exceeds available balance';
     }
 

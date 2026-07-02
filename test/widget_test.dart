@@ -5,26 +5,33 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
-import 'package:flutter/material.dart';
+//import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 import 'package:bitcoinsilver_wallet/main.dart';
+import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
+import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
+import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('app boots to setup screen', (WidgetTester tester) async {
+    final rpcConfig = RpcConfigService();
+    final walletProvider = WalletProvider(rpcConfig);
+    final blockchainProvider = BlockchainProvider();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<WalletProvider>.value(value: walletProvider),
+          ChangeNotifierProvider<BlockchainProvider>.value(value: blockchainProvider),
+        ],
+        child: MyApp(startupFuture: Future<void>.value()),
+      ),
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Recover Wallet'), findsOneWidget);
   });
 }

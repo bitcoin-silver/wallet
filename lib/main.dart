@@ -147,6 +147,8 @@ void main() async {
     );
   };
 
+  final startupFuture = _bootstrapApp(wp, bp, rpcConfig);
+
   runApp(
     MultiProvider(
       providers: [
@@ -155,112 +157,226 @@ void main() async {
         ChangeNotifierProvider<AddressbookProvider>(create: (_) => AddressbookProvider()),
         ChangeNotifierProvider<ChatProvider>(create: (_) => ChatProvider()),
       ],
-      child: const MyApp(),
+      child: MyApp(startupFuture: startupFuture),
     ),
   );
 }
 
+Future<void> _bootstrapApp(
+  WalletProvider wp,
+  BlockchainProvider bp,
+  RpcConfigService rpcConfig,
+) async {
+  try {
+    await Future.wait([
+      _configureRpcConnection(wp, rpcConfig),
+      wp.loadWallet(),
+    ]);
+
+    if (wp.address != null && wp.rpcError == null) {
+      await Future.wait([
+        wp.fetchUtxos(force: true),
+        bp.loadBlockchain(wp.address),
+      ]);
+    }
+  } catch (e) {
+    if (kDebugMode) {
+      debugPrint('Startup bootstrap failed: $e');
+    }
+  }
+}
+
+Future<void> _configureRpcConnection(
+  WalletProvider wp,
+  RpcConfigService rpcConfig,
+) async {
+  try {
+    bool rpcConnected = false;
+
+    if (await rpcConfig.primaryRpcCredentialsConfigured()) {
+      await rpcConfig.setActiveRpcPrimary();
+      try {
+        await wp.walletService.rpcRequest('getblockchaininfo');
+        rpcConnected = true;
+      } catch (_) {
+        // Try the secondary RPC below.
+      }
+    }
+
+    if (!rpcConnected) {
+      final secondaryUrl = await rpcConfig.getSecondaryRpcUrl();
+      if (secondaryUrl != null && secondaryUrl.isNotEmpty) {
+        await rpcConfig.setActiveRpcSecondary();
+        try {
+          await wp.walletService.rpcRequest('getblockchaininfo');
+          rpcConnected = true;
+        } catch (_) {
+          // Fall through to error state.
+        }
+      }
+    }
+
+    if (!rpcConnected) {
+      wp.setRpcError('Failed to connect to any RPC server. Please check your network connection or RPC configuration.');
+    } else {
+      wp.setRpcError(null);
+    }
+  } catch (e) {
+    wp.setRpcError('An unexpected error occurred during RPC setup: $e');
+  }
+}
+
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final Future<void> startupFuture;
+
+  const MyApp({super.key, required this.startupFuture});
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<WalletProvider>(
-      builder: (context, wp, child) {
-        final initialRoute = wp.privateKey != null ? '/home' : '/setup';
+    return FutureBuilder<void>(
+      future: startupFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const _StartupLoadingScreen();
+        }
 
+        return Consumer<WalletProvider>(
+          builder: (context, wp, child) {
+            final initialRoute = wp.privateKey != null ? '/home' : '/setup';
+
+            return MaterialApp(
+              navigatorKey: navigatorKey, // For navigation from notifications
+              title: 'Bitcoin Silver Wallet',
+              debugShowCheckedModeBanner: false,
+
+              // Material 3 theme with silver accent
+              theme: ThemeData(
+                useMaterial3: true,
+                brightness: Brightness.dark,
+                scaffoldBackgroundColor: const Color(0xFF0A0A0A),
+                colorScheme: ColorScheme.dark(
+                  primary: const Color(0xFFC0C0C0), // Silver
+                  secondary: const Color(0xFF00E5FF), // Cyan accent
+                  surface: const Color(0xFF1A1A1A),
+                  onPrimary: Colors.black,
+                  onSecondary: Colors.black,
+                  onSurface: Colors.white,
+                ),
+                appBarTheme: const AppBarTheme(
+                  centerTitle: true,
+                  elevation: 0,
+                  backgroundColor: Color(0xFF0A0A0A),
+                ),
+                elevatedButtonTheme: ElevatedButtonThemeData(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                cardTheme: CardThemeData(
+                  color: const Color(0xFF1A1A1A),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: const Color(0xFFC0C0C0).withValues(alpha: 0.1),
+                    ),
+                  ),
+                ),
+              ),
+
+              darkTheme: ThemeData(
+                useMaterial3: true,
+                brightness: Brightness.dark,
+                scaffoldBackgroundColor: const Color(0xFF0A0A0A),
+                colorScheme: ColorScheme.dark(
+                  primary: const Color(0xFFC0C0C0), // Silver
+                  secondary: const Color(0xFF00E5FF), // Cyan accent
+                  surface: const Color(0xFF1A1A1A),
+                  onPrimary: Colors.black,
+                  onSecondary: Colors.black,
+                  onSurface: Colors.white,
+                ),
+                appBarTheme: const AppBarTheme(
+                  centerTitle: true,
+                  elevation: 0,
+                  backgroundColor: Color(0xFF0A0A0A),
+                ),
+                elevatedButtonTheme: ElevatedButtonThemeData(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                cardTheme: CardThemeData(
+                  color: const Color(0xFF1A1A1A),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: const Color(0xFFC0C0C0).withValues(alpha: 0.1),
+                    ),
+                  ),
+                ),
+              ),
+
+              themeMode: ThemeMode.dark, // Always use dark theme
+
+              initialRoute: initialRoute,
+              routes: {
+                '/setup': (context) => SetupView(),
+                '/home': (context) => const BiometricGate(),
+              },
+
+              // Add navigation observer for debugging
+              navigatorObservers: kDebugMode ? [_DebugNavigatorObserver()] : [],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _StartupLoadingScreen extends StatelessWidget {
+  const _StartupLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorKey: navigatorKey, // For navigation from notifications
-      title: 'Bitcoin Silver Wallet',
       debugShowCheckedModeBanner: false,
-
-      // Material 3 theme with silver accent
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0A0A0A),
-        colorScheme: ColorScheme.dark(
-          primary: const Color(0xFFC0C0C0), // Silver
-          secondary: const Color(0xFF00E5FF), // Cyan accent
-          surface: const Color(0xFF1A1A1A),
-          onPrimary: Colors.black,
-          onSecondary: Colors.black,
-          onSurface: Colors.white,
-        ),
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          elevation: 0,
-          backgroundColor: Color(0xFF0A0A0A),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
-        cardTheme: CardThemeData(
-          color: const Color(0xFF1A1A1A),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: const Color(0xFFC0C0C0).withValues(alpha: 0.1),
-            ),
+      ),
+      home: const Scaffold(
+        backgroundColor: Color(0xFF0A0A0A),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: Color(0xFF00E5FF),
+                ),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Starting Bitcoin Silver Wallet...',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+            ],
           ),
         ),
       ),
-
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0A0A0A),
-        colorScheme: ColorScheme.dark(
-          primary: const Color(0xFFC0C0C0), // Silver
-          secondary: const Color(0xFF00E5FF), // Cyan accent
-          surface: const Color(0xFF1A1A1A),
-          onPrimary: Colors.black,
-          onSecondary: Colors.black,
-          onSurface: Colors.white,
-        ),
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          elevation: 0,
-          backgroundColor: Color(0xFF0A0A0A),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
-        cardTheme: CardThemeData(
-          color: const Color(0xFF1A1A1A),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: const Color(0xFFC0C0C0).withValues(alpha: 0.1),
-            ),
-          ),
-        ),
-      ),
-
-      themeMode: ThemeMode.dark, // Always use dark theme
-
-      initialRoute: initialRoute,
-      routes: {
-        '/setup': (context) => SetupView(),
-        '/home': (context) => const BiometricGate(),
-      },
-
-      // Add navigation observer for debugging
-      navigatorObservers: kDebugMode ? [_DebugNavigatorObserver()] : [],
-    );
-      },
     );
   }
 }

@@ -459,14 +459,46 @@ class WalletProvider with ChangeNotifier {
   }
 
   Future<void> saveWallet(String address, String privateKey, {String? mnemonic}) async {
-    _privateKey = privateKey;
-    _address = address;
-    _mnemonic = mnemonic;
-    await _storage.write(key: 'key', value: privateKey);
-    if (mnemonic != null) {
-      await _storage.write(key: 'mnemonic', value: mnemonic);
+    final previousPrivateKey = _privateKey;
+    final previousAddress = _address;
+    final previousMnemonic = _mnemonic;
+
+    try {
+      await _storage.write(key: 'key', value: privateKey);
+      if (mnemonic != null) {
+        await _storage.write(key: 'mnemonic', value: mnemonic);
+      } else {
+        await _storage.delete(key: 'mnemonic');
+      }
+
+      _privateKey = privateKey;
+      _address = address;
+      _mnemonic = mnemonic;
+      notifyListeners();
+    } catch (_) {
+      // Attempt to restore previously persisted wallet data on partial writes.
+      try {
+        if (previousPrivateKey != null) {
+          await _storage.write(key: 'key', value: previousPrivateKey);
+        } else {
+          await _storage.delete(key: 'key');
+        }
+
+        if (previousMnemonic != null) {
+          await _storage.write(key: 'mnemonic', value: previousMnemonic);
+        } else {
+          await _storage.delete(key: 'mnemonic');
+        }
+      } catch (_) {
+        // Keep original failure as the surfaced error.
+      }
+
+      _privateKey = previousPrivateKey;
+      _address = previousAddress;
+      _mnemonic = previousMnemonic;
+      notifyListeners();
+      rethrow;
     }
-    notifyListeners();
   }
 
   Future<void> deleteWallet() async {
@@ -804,6 +836,18 @@ class WalletProvider with ChangeNotifier {
       final mnemonic = walletData['mnemonic']!;
       final newAddress = walletData['address']!;
       final newWif = walletData['privateKey']!;
+
+      // Ensure secure storage is writable before any irreversible sweep step.
+      try {
+        await _storage.write(key: 'migration_preflight', value: DateTime.now().toIso8601String());
+        await _storage.delete(key: 'migration_preflight');
+      } catch (e) {
+        _lastError = 'Migration failed: secure storage is unavailable. $e';
+        _message = '❌ Migration failed: secure storage unavailable.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
 
       if (currentBalance > 0.00001) {
         // 2. Sweep funds

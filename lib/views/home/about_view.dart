@@ -2,6 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:bitcoinsilver_wallet/widgets/app_background.dart';
 
+const String btcsLegalDisclaimerTitle = 'Disclaimer: ';
+const String btcsLegalSummaryText =
+  'Silver Wallet is self-custodial software provided for technical and informational use. It is provided "as is" without warranties.';
+const String btcsLegalResponsibilityText =
+  'You are solely responsible for protecting your seed phrase and WIF private key, and for complying with local laws and tax obligations.';
+const String btcsLegalDisclaimerText =
+  'BTCS (Bitcoin Silver) is a fully decentralized, open-source cryptocurrency based on the Proof-of-Work algorithm. There is no corporate entity, no pre-sale and no developer allocation. This website is for technical and informational purposes only. The software is provided "as is", without warranty of any kind. Users are solely responsible for securing their private keys and seed phrases and for complying with applicable local laws and tax regulations. BTCS does not constitute a crypto-asset service under EU Regulation 2023/1114 (MiCA).';
+
 class AboutView extends StatelessWidget {
   const AboutView({super.key});
 
@@ -73,7 +81,7 @@ class AboutView extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'Version 5.5.3',
+                    'Version 5.6',
                     style: TextStyle(color: Colors.cyanAccent, fontSize: 14),
                   ),
                 ),
@@ -241,6 +249,12 @@ class AboutView extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
+              // Legal Disclaimer section
+              _buildSectionTitle('⚖️ Legal Disclaimer'),
+              const SizedBox(height: 16),
+              _buildLegalDisclaimerCard(),
+              const SizedBox(height: 32),
+
               // Footer message
               Container(
                 padding: const EdgeInsets.all(20),
@@ -346,6 +360,74 @@ class AboutView extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildLegalDisclaimerCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.gavel_rounded, color: Colors.cyanAccent, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  btcsLegalDisclaimerTitle,
+                  style: const TextStyle(
+                    color: Colors.cyanAccent,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            btcsLegalSummaryText,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            btcsLegalResponsibilityText,
+            style: const TextStyle(
+              color: Colors.orangeAccent,
+              fontSize: 12.5,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.28),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.18)),
+            ),
+            child: Text(
+              btcsLegalDisclaimerText,
+              style: const TextStyle(
+                color: Colors.white60,
+                fontSize: 11.5,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -36,6 +36,14 @@
 - Upgraded to Flutter 3.44.4 • channel stable
 - Upgraded to Android Gradle Plugin (AGP) 9.6.0
 - Upgraded to Kotlin 2.4.0
+- Migration Flow Hardening:
+  - Added explicit migration warning + acknowledgment step before migration starts.
+  - Added funded-wallet pre-check for smart fee availability and blocks migration when node fee estimation is unavailable.
+  - Added pending-transaction guard: migration is delayed while unconfirmed/pending transactions exist.
+  - Added secure-storage preflight and fail-closed behavior before irreversible sweep operations.
+  - Added migration integrity checks for migrated private key/address consistency before success handoff.
+  - Added detailed failure dialog path so users get clear migration error reasons.
+  - Enforced backup-first success flow with mandatory backup confirmation dialog.
 - Fee Estimation Hardening:
   - Handles `estimatesmartfee` failures explicitly (RPC errors, missing `feerate`, and `feerate: -1` / no estimate).
   - Adds send-time manual fee entry fallback when estimation is unavailable.
@@ -47,6 +55,8 @@
   - Network-condition presets tuned to current conditions:
     - Low: `0.085 BTCS/kvB`
     - High: `0.10 BTCS/kvB`
+- Resume/Background Reliability:
+  - Improved silent transaction refresh behavior so latest transactions are reloaded after app resume/background transitions.
 - Performance improvements and dependency updates.
 
 ## Quick Start
@@ -108,6 +118,27 @@ Output locations:
 
 **Never commit `dart_defines.json` or `.env` to version control.**
 
+## Migration Safety Checklist
+
+Use this quick checklist after migration-related changes:
+
+- Warning + Consent: Migration starts only after user acknowledgment dialog is accepted.
+- Pending Guard: Migration is blocked while pending/unconfirmed transactions exist.
+- Fee Guard: Funded migration is blocked when smart fee estimation is unavailable.
+- Storage Guard: Secure storage preflight succeeds before sweep/save steps.
+- Integrity Guard: On success, migrated private key and derived address are validated.
+- Backup Gate: Success requires user backup confirmation dialog completion.
+- Failure UX: Any failure path shows a clear reason dialog and keeps old wallet active.
+- Resume Sync: After app resume/background transitions, latest transactions reload correctly.
+
+Suggested manual smoke test sequence:
+
+1. Empty wallet migration (12-word and 24-word).
+2. Funded wallet migration with small amount.
+3. Funded wallet migration with larger/fragmented UTXOs.
+4. Pending transaction scenario (verify migration is delayed).
+5. Smart fee unavailable scenario (verify migration is blocked with explanation).
+
 ## Contributing
 
 Contributions are welcome! Please:
@@ -121,7 +152,7 @@ Contributions are welcome! Please:
 For bugs or feature requests, please open an issue.
 
 ```bash
-- Current Google Play version 5.5
+- Current Google Play version 5.6
 ```
 
 <a href="https://play.google.com/store/apps/details?id=top.bitcoinsilver.wallet2025&pli=1">
