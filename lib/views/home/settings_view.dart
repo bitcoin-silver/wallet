@@ -12,12 +12,12 @@ import 'package:bitcoinsilver_wallet/views/home/network_info_view.dart';
 import 'package:bitcoinsilver_wallet/services/biometric_service.dart';
 import 'package:bitcoinsilver_wallet/widgets/app_background.dart';
 
-const String btcsLegalDisclaimerTitle = 'Disclaimer: ';
-const String btcsLegalSummaryText =
+const String btcsDisclaimerTitle = 'Disclaimer: ';
+const String btcsDisclaimerSummaryText =
   'Silver Wallet is self-custodial software provided for technical and informational use. It is provided "as is" without warranties.';
-const String btcsLegalResponsibilityText =
+const String btcsDisclaimerResponsibilityText =
   'You are solely responsible for protecting your seed phrase and WIF private key, and for complying with local laws and tax obligations.';
-const String btcsLegalDisclaimerText =
+const String btcsDisclaimerText =
   'BTCS (Bitcoin Silver) is a fully decentralized, open-source cryptocurrency based on the Proof-of-Work algorithm. There is no corporate entity, no pre-sale and no developer allocation. This website is for technical and informational purposes only. The software is provided "as is", without warranty of any kind. Users are solely responsible for securing their private keys and seed phrases and for complying with applicable local laws and tax regulations. BTCS does not constitute a crypto-asset service under EU Regulation 2023/1114 (MiCA).';
 
 class SettingsView extends StatefulWidget {
@@ -949,7 +949,7 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Future<void> _showLegalDisclaimerDialog(BuildContext context) async {
+  Future<void> _showDisclaimerDialog(BuildContext context) async {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -960,7 +960,7 @@ class _SettingsViewState extends State<SettingsView> {
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                btcsLegalDisclaimerTitle,
+                btcsDisclaimerTitle,
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ),
@@ -971,12 +971,12 @@ class _SettingsViewState extends State<SettingsView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                btcsLegalSummaryText,
+                btcsDisclaimerSummaryText,
                 style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
               ),
               const SizedBox(height: 10),
               const Text(
-                btcsLegalResponsibilityText,
+                btcsDisclaimerResponsibilityText,
                 style: TextStyle(color: Colors.orangeAccent, fontSize: 12.5, height: 1.35),
               ),
               const SizedBox(height: 12),
@@ -989,7 +989,7 @@ class _SettingsViewState extends State<SettingsView> {
                   border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.18)),
                 ),
                 child: const Text(
-                  btcsLegalDisclaimerText,
+                  btcsDisclaimerText,
                   style: TextStyle(
                     color: Colors.white60,
                     fontSize: 11.5,
@@ -1519,11 +1519,11 @@ class _SettingsViewState extends State<SettingsView> {
                   const Divider(color: Colors.white),
                   ListTile(
                     title: const Text(
-                      'Legal Disclaimer',
+                      'Disclaimer',
                       style: TextStyle(color: Colors.white),
                     ),
                     leading: const Icon(Icons.gavel_rounded, color: Colors.white),
-                    onTap: () => _showLegalDisclaimerDialog(context),
+                    onTap: () => _showDisclaimerDialog(context),
                   ),
                   const Divider(color: Colors.white),
                   ListTile(

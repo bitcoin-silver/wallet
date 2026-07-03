@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:bitcoinsilver_wallet/widgets/app_background.dart';
 
-const String btcsLegalDisclaimerTitle = 'Disclaimer: ';
-const String btcsLegalSummaryText =
+const String btcsDisclaimerTitle = 'Disclaimer: ';
+const String btcsDisclaimerSummaryText =
   'Silver Wallet is self-custodial software provided for technical and informational use. It is provided "as is" without warranties.';
-const String btcsLegalResponsibilityText =
+const String btcsDisclaimerResponsibilityText =
   'You are solely responsible for protecting your seed phrase and WIF private key, and for complying with local laws and tax obligations.';
-const String btcsLegalDisclaimerText =
+const String btcsDisclaimerText =
   'BTCS (Bitcoin Silver) is a fully decentralized, open-source cryptocurrency based on the Proof-of-Work algorithm. There is no corporate entity, no pre-sale and no developer allocation. This website is for technical and informational purposes only. The software is provided "as is", without warranty of any kind. Users are solely responsible for securing their private keys and seed phrases and for complying with applicable local laws and tax regulations. BTCS does not constitute a crypto-asset service under EU Regulation 2023/1114 (MiCA).';
 
 class AboutView extends StatelessWidget {
@@ -249,10 +249,8 @@ class AboutView extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
-              // Legal Disclaimer section
-              _buildSectionTitle('⚖️ Legal Disclaimer'),
-              const SizedBox(height: 16),
-              _buildLegalDisclaimerCard(),
+              // Disclaimer section
+              _buildDisclaimerCard(),
               const SizedBox(height: 32),
 
               // Footer message
@@ -363,7 +361,7 @@ class AboutView extends StatelessWidget {
     );
   }
 
-  Widget _buildLegalDisclaimerCard() {
+  Widget _buildDisclaimerCard() {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -380,7 +378,7 @@ class AboutView extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  btcsLegalDisclaimerTitle,
+                  btcsDisclaimerTitle,
                   style: const TextStyle(
                     color: Colors.cyanAccent,
                     fontSize: 15,
@@ -392,7 +390,7 @@ class AboutView extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            btcsLegalSummaryText,
+            btcsDisclaimerSummaryText,
             style: const TextStyle(
               color: Colors.white70,
               fontSize: 13,
@@ -401,7 +399,7 @@ class AboutView extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            btcsLegalResponsibilityText,
+            btcsDisclaimerResponsibilityText,
             style: const TextStyle(
               color: Colors.orangeAccent,
               fontSize: 12.5,
@@ -418,7 +416,7 @@ class AboutView extends StatelessWidget {
               border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.18)),
             ),
             child: Text(
-              btcsLegalDisclaimerText,
+              btcsDisclaimerText,
               style: const TextStyle(
                 color: Colors.white60,
                 fontSize: 11.5,
