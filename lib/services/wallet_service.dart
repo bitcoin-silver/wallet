@@ -10,15 +10,16 @@ import 'package:base_x/base_x.dart';
 import 'package:bip39/bip39.dart' as bip39;
 import 'package:hex/hex.dart';
 import 'package:bitcoinsilver_wallet/config.dart';
-import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
 import 'package:bitcoinsilver_wallet/services/btcs_signer.dart';
 
 class WalletService {
+  static const String rpcUnavailableWarning =
+      'RPC is unreachable right now. Balance display is affected until connection is restored.';
+
   final BaseXCodec base58 =
       BaseXCodec('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
-  final RpcConfigService _rpcConfig;
 
-  WalletService(this._rpcConfig);
+  WalletService();
 
   String? generatePrivateKey() {
     final random = Random.secure();
@@ -148,16 +149,16 @@ class WalletService {
     String method,
     [List<dynamic>? params,
   ]) async {
-    final rpcUrl = _rpcConfig.getActiveRpcUrl();
-    final rpcUser = _rpcConfig.getActiveRpcUser();
-    final rpcPassword = _rpcConfig.getActiveRpcPassword();
+    final rpcUrl = Config.rpcUrl;
+    final rpcUser = Config.rpcUser;
+    final rpcPassword = Config.rpcPassword;
 
-    if (rpcUrl == null || rpcUrl.isEmpty) {
-      throw Exception('Active RPC URL not set');
+    if (rpcUrl.isEmpty) {
+      throw Exception('RPC URL not configured');
     }
 
     Map<String, String> headers = {'Content-Type': 'application/json'};
-    if (rpcUser != null && rpcUser.isNotEmpty && rpcPassword != null && rpcPassword.isNotEmpty) {
+    if (rpcUser.isNotEmpty && rpcPassword.isNotEmpty) {
       final auth = 'Basic ${base64Encode(utf8.encode('$rpcUser:$rpcPassword'))}';
       headers['Authorization'] = auth;
     }
@@ -199,16 +200,16 @@ class WalletService {
   Future<List<Map<String, dynamic>?>> batchRpcRequest(
       List<Map<String, dynamic>> requests,
   ) async {
-    final rpcUrl = _rpcConfig.getActiveRpcUrl();
-    final rpcUser = _rpcConfig.getActiveRpcUser();
-    final rpcPassword = _rpcConfig.getActiveRpcPassword();
+    final rpcUrl = Config.rpcUrl;
+    final rpcUser = Config.rpcUser;
+    final rpcPassword = Config.rpcPassword;
 
-    if (rpcUrl == null || rpcUrl.isEmpty) {
-      throw Exception('Active RPC URL not set');
+    if (rpcUrl.isEmpty) {
+      throw Exception('RPC URL not configured');
     }
 
     Map<String, String> headers = {'Content-Type': 'application/json'};
-    if (rpcUser != null && rpcUser.isNotEmpty && rpcPassword != null && rpcPassword.isNotEmpty) {
+    if (rpcUser.isNotEmpty && rpcPassword.isNotEmpty) {
       final auth = 'Basic ${base64Encode(utf8.encode('$rpcUser:$rpcPassword'))}';
       headers['Authorization'] = auth;
     }
@@ -448,7 +449,11 @@ class WalletService {
     double? feeRateOverride,
     bool isSweep = false,
   }) async {
-    final allUtxos = await getUtxos(fromAddress);
+    try {
+      // Preflight RPC health before building/signing transaction.
+      await rpcRequest('getblockchaininfo');
+
+      final allUtxos = await getUtxos(fromAddress);
     final utxos = (preSelectedUtxos != null && preSelectedUtxos.isNotEmpty)
         ? preSelectedUtxos.map((u) => Map<String, dynamic>.from(u)).toList()
         : allUtxos
@@ -709,5 +714,13 @@ class WalletService {
       'success': false,
       'message': 'Insufficient funds. Available: ${inputSum.toStringAsFixed(8)} BTCS.',
     };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': rpcUnavailableWarning,
+        'rpcUnavailable': true,
+        'error': e.toString(),
+      };
+    }
   }
 }

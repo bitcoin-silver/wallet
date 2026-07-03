@@ -9,6 +9,7 @@ class BlockchainProvider with ChangeNotifier {
   final List<dynamic> _transactions = [];
   double _price = 0.0;
   bool _isLoading = false;
+  bool _isFetchingTransactions = false;
   bool _pendingSilentRefresh = false;
   bool _hasMore = true;
   int _startIndex = 0;
@@ -84,7 +85,7 @@ class BlockchainProvider with ChangeNotifier {
   }
 
   Future<void> fetchTransactions(String address, {bool silent = false}) async {
-    if (_isLoading) {
+    if (_isFetchingTransactions) {
       if (!silent) return;
 
       // Queue the refresh so resume/background sync is retried once the
@@ -92,6 +93,8 @@ class BlockchainProvider with ChangeNotifier {
       _pendingSilentRefresh = true;
       return;
     }
+
+    _isFetchingTransactions = true;
     
     if (!silent) {
       _isLoading = true;
@@ -149,12 +152,13 @@ class BlockchainProvider with ChangeNotifier {
       debugPrint('Error fetching transactions: $e');
     } finally {
       await fetchPrice(silent: silent);
+      _isFetchingTransactions = false;
       if (!silent) {
         _isLoading = false;
       }
       notifyListeners();
 
-      if (_pendingSilentRefresh && !_isLoading) {
+      if (_pendingSilentRefresh && !_isFetchingTransactions) {
         _pendingSilentRefresh = false;
         Future.delayed(const Duration(milliseconds: 250), () {
           loadBlockchain(address, silent: true);

@@ -29,7 +29,7 @@ extensions.configure<ApplicationExtension> {
         applicationId = "top.bitcoinsilver.wallet2025"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 61
+        versionCode = 64
         versionName = "BTCS-W-5.6"
     }
 

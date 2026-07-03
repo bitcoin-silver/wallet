@@ -2,14 +2,10 @@ class Config {
   static const String addressPrefix = 'bs';
   static const int networkPrefix = 0x80;
 
-  // RPC credentials are managed through RpcConfigService and secure storage
+  // RPC values are read directly from dart defines at build time
   static const String rpcUrl = String.fromEnvironment('RPC_URL', defaultValue: '');
   static const String rpcUser = String.fromEnvironment('RPC_USER', defaultValue: '');
   static const String rpcPassword = String.fromEnvironment('RPC_PASSWORD', defaultValue: '');
-
-  static const String secondaryRpcUrl = String.fromEnvironment('SECONDARY_RPC_URL', defaultValue: '');
-  static const String secondaryRpcUser = String.fromEnvironment('SECONDARY_RPC_USER', defaultValue: '');
-  static const String secondaryRpcPassword = String.fromEnvironment('SECONDARY_RPC_PASSWORD', defaultValue: '');
 
   static const String explorerUrl = 'https://explorer.bitcoinsilver.top';
   static const String getAddressTxsEndpoint = '/ext/getaddress';

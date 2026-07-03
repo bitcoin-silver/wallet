@@ -12,12 +12,10 @@ import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/main.dart';
 import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
-import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
 
 void main() {
   testWidgets('app boots to setup screen', (WidgetTester tester) async {
-    final rpcConfig = RpcConfigService();
-    final walletProvider = WalletProvider(rpcConfig);
+    final walletProvider = WalletProvider();
     final blockchainProvider = BlockchainProvider();
 
     await tester.pumpWidget(

@@ -11,7 +11,6 @@ import 'package:bitcoinsilver_wallet/providers/chat_provider.dart';
 import 'package:bitcoinsilver_wallet/views/setup_view.dart';
 import 'package:bitcoinsilver_wallet/views/biometric_gate.dart';
 import 'package:bitcoinsilver_wallet/views/chat/chat_view.dart';
-import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
 import 'package:bitcoinsilver_wallet/services/chat_notification_service.dart';
 // Migration service removed - was causing issues on Play Store updates
 // import 'package:bitcoinsilver_wallet/services/migration_service.dart';
@@ -37,10 +36,6 @@ void main() async {
     }
   }
 
-  // Initialize RPC credentials in secure storage
-  final rpcConfig = RpcConfigService();
-  await rpcConfig.initializeRpcCredentials();
-
   // Enable edge-to-edge display for Android 15+ compatibility
   SystemChrome.setEnabledSystemUIMode(
     SystemUiMode.edgeToEdge,
@@ -59,7 +54,7 @@ void main() async {
   // The app now supports all orientations for better user experience
 
   // Initialize providers
-  final wp = WalletProvider(rpcConfig);
+  final wp = WalletProvider();
   final bp = BlockchainProvider();
 
   // Link providers - so notifications refresh both balance and transactions silently
@@ -72,57 +67,6 @@ void main() async {
       ),
     );
   });
-
-  // --- RPC Selection Logic ---
-  try {
-    bool rpcConnected = false;
-
-    // Attempt to set primary RPC as active and test connectivity
-    if (await rpcConfig.primaryRpcCredentialsConfigured()) { // Check if primary RPC is even configured
-      await rpcConfig.setActiveRpcPrimary();
-      try {
-        await wp.walletService.rpcRequest('getblockchaininfo'); // Test primary RPC
-        rpcConnected = true;
-      } catch (e) {
-        // Primary failed
-      }
-    }
-
-    if (!rpcConnected) {
-      // Primary failed or not configured, try secondary
-      final secondaryUrl = await rpcConfig.getSecondaryRpcUrl();
-      if (secondaryUrl != null && secondaryUrl.isNotEmpty) {
-        await rpcConfig.setActiveRpcSecondary();
-        try {
-          await wp.walletService.rpcRequest('getblockchaininfo'); // Test secondary RPC
-          rpcConnected = true;
-        } catch (secondaryE) {
-          // Secondary failed
-        }
-      }
-    }
-
-    if (!rpcConnected) {
-      wp.setRpcError('Failed to connect to any RPC server. Please check your network connection or RPC configuration.');
-    } else {
-      wp.setRpcError(null); // Clear any previous RPC errors
-    }
-  } catch (e) {
-    wp.setRpcError('An unexpected error occurred during RPC setup: $e');
-  }
-
-  // Load wallet and data synchronously after RPC selection
-  try {
-    await wp.loadWallet();
-    if (wp.address != null && wp.rpcError == null) { // Only fetch UTXOs if RPC connected
-      await wp.fetchUtxos(force: true);
-      await bp.loadBlockchain(wp.address);
-    }
-  } catch (e) {
-    if (kDebugMode) {
-      debugPrint('Error loading wallet: $e');
-    }
-  }
 
   // Add error handling for Flutter framework
   if (kDebugMode) {
@@ -147,7 +91,7 @@ void main() async {
     );
   };
 
-  final startupFuture = _bootstrapApp(wp, bp, rpcConfig);
+  final startupFuture = _bootstrapApp(wp, bp);
 
   runApp(
     MultiProvider(
@@ -165,19 +109,24 @@ void main() async {
 Future<void> _bootstrapApp(
   WalletProvider wp,
   BlockchainProvider bp,
-  RpcConfigService rpcConfig,
 ) async {
   try {
     await Future.wait([
-      _configureRpcConnection(wp, rpcConfig),
+      _configureRpcConnection(wp),
       wp.loadWallet(),
     ]);
 
-    if (wp.address != null && wp.rpcError == null) {
-      await Future.wait([
-        wp.fetchUtxos(force: true),
+    if (wp.address != null) {
+      final futures = <Future<void>>[
         bp.loadBlockchain(wp.address),
-      ]);
+      ];
+
+      // RPC affects UTXO/balance fetching, but explorer history can still load.
+      if (wp.rpcError == null) {
+        futures.add(wp.fetchUtxos(force: true));
+      }
+
+      await Future.wait(futures);
     }
   } catch (e) {
     if (kDebugMode) {
@@ -188,41 +137,24 @@ Future<void> _bootstrapApp(
 
 Future<void> _configureRpcConnection(
   WalletProvider wp,
-  RpcConfigService rpcConfig,
 ) async {
   try {
-    bool rpcConnected = false;
+    final rpcResponse = await wp.walletService.rpcRequest('getblockchaininfo');
+    final hasValidResult = rpcResponse != null &&
+        rpcResponse['error'] == null &&
+        rpcResponse['result'] != null;
 
-    if (await rpcConfig.primaryRpcCredentialsConfigured()) {
-      await rpcConfig.setActiveRpcPrimary();
-      try {
-        await wp.walletService.rpcRequest('getblockchaininfo');
-        rpcConnected = true;
-      } catch (_) {
-        // Try the secondary RPC below.
-      }
-    }
-
-    if (!rpcConnected) {
-      final secondaryUrl = await rpcConfig.getSecondaryRpcUrl();
-      if (secondaryUrl != null && secondaryUrl.isNotEmpty) {
-        await rpcConfig.setActiveRpcSecondary();
-        try {
-          await wp.walletService.rpcRequest('getblockchaininfo');
-          rpcConnected = true;
-        } catch (_) {
-          // Fall through to error state.
-        }
-      }
-    }
-
-    if (!rpcConnected) {
-      wp.setRpcError('Failed to connect to any RPC server. Please check your network connection or RPC configuration.');
+    if (!hasValidResult) {
+      wp.setRpcError(
+        'RPC is unreachable right now. Balance display is affected until connection is restored.',
+      );
     } else {
       wp.setRpcError(null);
     }
   } catch (e) {
-    wp.setRpcError('An unexpected error occurred during RPC setup: $e');
+    wp.setRpcError(
+      'RPC is unreachable right now. Balance display is affected until connection is restored.',
+    );
   }
 }
 

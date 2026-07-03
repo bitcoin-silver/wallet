@@ -479,6 +479,24 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
     final double? displayBalance = walletProvider.displayBalance;
     final double? confirmedBalance = walletProvider.balance;
     final bool hasPending = walletProvider.hasPendingTransactions;
+    final bool hasOutgoingPending = walletProvider.hasOutgoingPendingTransactions;
+    final bool hasIncomingPending = walletProvider.hasIncomingPendingTransactions;
+
+    String pendingStatusLabel;
+    String pendingStatusHint;
+    if (hasOutgoingPending && !hasIncomingPending) {
+      pendingStatusLabel =
+          '${walletProvider.outgoingPendingCount} outgoing transaction${walletProvider.outgoingPendingCount > 1 ? 's' : ''} pending';
+      pendingStatusHint = 'Sent balance will update after confirmation';
+    } else if (!hasOutgoingPending && hasIncomingPending) {
+      pendingStatusLabel =
+          '${walletProvider.incomingPendingCount} incoming transaction${walletProvider.incomingPendingCount > 1 ? 's' : ''} pending';
+      pendingStatusHint = 'Incoming funds will update after confirmation';
+    } else {
+      pendingStatusLabel =
+          'Wallet pending: ${walletProvider.pendingTransactionsCount} transaction${walletProvider.pendingTransactionsCount > 1 ? 's' : ''}';
+      pendingStatusHint = 'Balance will update after confirmation';
+    }
 
     final double price = blockchainProvider.price;
 
@@ -503,6 +521,50 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                   padding: const EdgeInsets.only(top: 20, bottom: 20),
                   child: Column(
                     children: [
+                      if (walletProvider.rpcError != null &&
+                          walletProvider.rpcError!.trim().isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.orange.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            child: const Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.orange,
+                                  size: 20,
+                                ),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'RPC connection unavailable. Balance display is affected until connection is restored.',
+                                    style: TextStyle(
+                                      color: Colors.orangeAccent,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
                       if (blockchainProvider.isLoading || walletProvider.isLoading) ...[
                         const WalletBalanceSkeleton(),
                         // Action Buttons Skeleton
@@ -770,7 +832,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                           ),
                                           const SizedBox(width: 8),
                                           Text(
-                                            '${walletProvider.pendingTransactionsCount} transaction${walletProvider.pendingTransactionsCount > 1 ? 's' : ''} pending',
+                                            pendingStatusLabel,
                                             style: const TextStyle(
                                               color: Colors.orange,
                                               fontSize: 12,
@@ -782,7 +844,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      'Balance will update after confirmation',
+                                      pendingStatusHint,
                                       style: TextStyle(
                                         color: Colors.orange.withValues(alpha: 0.6),
                                         fontSize: 10,

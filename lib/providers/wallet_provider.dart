@@ -4,13 +4,15 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bitcoinsilver_wallet/services/wallet_service.dart';
 import 'package:bitcoinsilver_wallet/services/notification_service.dart';
-import 'package:bitcoinsilver_wallet/services/rpc_config_service.dart';
 import 'package:bitcoinsilver_wallet/services/btcs_signer.dart';
 
 // Backend URL - HTTPS endpoint
 const String backendUrl = 'https://bitcoinsilver.eu';
 
 class WalletProvider with ChangeNotifier {
+  static const String rpcUnavailableWarning =
+      'RPC is unreachable right now. Balance display is affected until connection is restored.';
+
   // Use default storage (compatible with Play Store signing)
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   final WalletService _ws;
@@ -101,6 +103,30 @@ class WalletProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  bool _looksLikeRpcFailureText(String text) {
+    final normalized = text.toLowerCase();
+    return normalized.contains('rpc') ||
+        normalized.contains('timed out') ||
+        normalized.contains('connection') ||
+        normalized.contains('socketexception') ||
+        normalized.contains('http status code') ||
+        normalized.contains('not configured');
+  }
+
+  void _setRpcUnavailableWarning() {
+    _rpcError = rpcUnavailableWarning;
+    _message = '⚠️ $rpcUnavailableWarning';
+  }
+
+  void _clearRpcUnavailableWarningIfPresent() {
+    if (_rpcError != null) {
+      _rpcError = null;
+    }
+    if (_message.contains(rpcUnavailableWarning)) {
+      _message = '';
+    }
+  }
+
   Future<bool> fetchFeeRate() async {
     _isFeeEstimateLoading = true;
     notifyListeners();
@@ -129,6 +155,7 @@ class WalletProvider with ChangeNotifier {
           _feeRate = feerate;
           _feeEstimateAvailable = true;
           _feeEstimateError = null;
+          _clearRpcUnavailableWarningIfPresent();
           return true;
         }
 
@@ -157,6 +184,7 @@ class WalletProvider with ChangeNotifier {
     } catch (e) {
       _feeEstimateAvailable = false;
       _feeEstimateError = 'RPC fee estimation failed: $e';
+      _setRpcUnavailableWarning();
       return false;
     } finally {
       _isFeeEstimateLoading = false;
@@ -275,20 +303,25 @@ class WalletProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isPending => _isPending;
   String? get lastError => _lastError;
-  bool get hasPendingTransactions => _isPending || _pendingTransactions.isNotEmpty || (_pendingBalance != null && _pendingBalance! > 0);
+  int get outgoingPendingCount => _pendingTransactions.length;
+  int get incomingPendingCount => _utxos
+      .where((u) =>
+          u['confirmations'] == 0 &&
+          !_pendingTransactions.containsKey(u['txid']) &&
+          u['txid'] != 'pending_marker')
+      .map((u) => u['txid'] as String)
+      .toSet()
+      .length;
+  bool get hasOutgoingPendingTransactions => outgoingPendingCount > 0;
+  bool get hasIncomingPendingTransactions => incomingPendingCount > 0;
+  bool get hasPendingTransactions =>
+      _isPending || hasOutgoingPendingTransactions || hasIncomingPendingTransactions;
   int get pendingTransactionsCount {
-    // Locally tracked outgoing transactions
-    int outgoing = _pendingTransactions.length;
-
-    // Incoming unconfirmed UTXOs (filtering out our own change to avoid double counting)
-    int incoming = _utxos.where((u) =>
-      u['confirmations'] == 0 &&
-      !_pendingTransactions.containsKey(u['txid']) &&
-      u['txid'] != 'pending_marker'
-    ).length;
+    final outgoing = outgoingPendingCount;
+    final incoming = incomingPendingCount;
 
     // Ensure we at least show 1 if _isPending is true but UTXOs aren't visible yet
-    int count = outgoing + incoming;
+    final count = outgoing + incoming;
     if (count == 0 && _isPending) return 1;
     return count;
   }
@@ -321,7 +354,7 @@ class WalletProvider with ChangeNotifier {
       _pendingTransactions.values.toList()
         ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-  WalletProvider(RpcConfigService rpcConfigService) : _ws = WalletService(rpcConfigService) {
+  WalletProvider() : _ws = WalletService() {
     _notificationService = NotificationService(
       backendUrl: backendUrl,
       onTransactionReceived: _handleTransactionReceived,
@@ -540,7 +573,11 @@ class WalletProvider with ChangeNotifier {
     }
   }
 
-  Future<void> fetchUtxos({bool force = false, bool silent = false}) async {
+  Future<void> fetchUtxos({
+    bool force = false,
+    bool silent = false,
+    bool allowRpcRecoveryRetry = true,
+  }) async {
     if (_address == null) {
       _balance = 0.0;
       _pendingBalance = 0.0;
@@ -575,10 +612,6 @@ class WalletProvider with ChangeNotifier {
       
       // 3. Calculate unconfirmed balance
       _pendingBalance = _ws.calculateUnconfirmedBalance(allUtxos);
-      
-      // Track if any mempool activity is going on
-        _isPending = allUtxos.any((u) => u['confirmations'] == 0 || u['txid'] == 'pending_marker') ||
-          _pendingTransactions.isNotEmpty;
 
       // Check if any of our locally tracked pending transactions are now confirmed or dropped
       final mempoolTxidsInUtxos = allUtxos
@@ -590,8 +623,19 @@ class WalletProvider with ChangeNotifier {
       for (final txid in _pendingTxids) {
         bool inConfirmedUtxos = allUtxos.any((u) => u['txid'] == txid && u['confirmations'] > 0);
         bool inMempool = mempoolTxidsInUtxos.contains(txid);
+        bool rpcConfirmed = false;
+
+        if (!inConfirmedUtxos) {
+          try {
+            final txResult = await _ws.rpcRequest('getrawtransaction', [txid, true]);
+            final confirmations = (txResult?['result']?['confirmations'] as num?)?.toInt() ?? 0;
+            rpcConfirmed = confirmations > 0;
+          } catch (_) {
+            // Ignore RPC lookup failures here and fall back to mempool/timeout logic.
+          }
+        }
         
-        if (inConfirmedUtxos) {
+        if (inConfirmedUtxos || rpcConfirmed) {
           confirmedTxs.add(txid);
         } else if (!inMempool) {
           // If it's not in mempool and not in confirmed UTXOs, it might be dropped.
@@ -624,24 +668,56 @@ class WalletProvider with ChangeNotifier {
         return utxo['txid'] != 'pending_marker' && !lockedUtxos.contains(utxoId);
       }).toList();
 
+      // Recompute pending state after local pending transaction cleanup so
+      // confirmed sends do not leave the UI stuck in a pending state.
+      _isPending = allUtxos.any((u) =>
+              u['confirmations'] == 0 || u['txid'] == 'pending_marker') ||
+          _pendingTransactions.isNotEmpty;
+
       debugPrint('💰 Wallet sync: ${_utxos.length} total UTXOs, Pending: $_isPending, Balance: $_balance');
 
       _lastFetch = DateTime.now();
       _lastError = null;
+      _clearRpcUnavailableWarningIfPresent();
       if (_message.contains('Connection lost')) {
         _message = '';
       }
 
     } catch (e) {
       debugPrint('Error in fetchUtxos: $e');
+
+      if (allowRpcRecoveryRetry) {
+        final recovered = await _attemptRpcRecovery();
+        if (recovered) {
+          return fetchUtxos(
+            force: true,
+            silent: silent,
+            allowRpcRecoveryRetry: false,
+          );
+        }
+      }
+
       _lastError = 'Failed to fetch UTXOs: $e';
-      _message = '⚠️ Connection lost. Displaying cached balances.';
+      _setRpcUnavailableWarning();
     } finally {
       if (!silent) {
         _isLoading = false;
       }
       notifyListeners();
     }
+  }
+
+  Future<bool> _attemptRpcRecovery() async {
+    try {
+      await _ws.rpcRequest('getblockchaininfo');
+      _clearRpcUnavailableWarningIfPresent();
+      return true;
+    } catch (_) {
+      // Recovery failed; report below.
+    }
+
+    _setRpcUnavailableWarning();
+    return false;
   }
 
     Future<Map<String, dynamic>> sendTransaction(
@@ -681,17 +757,47 @@ class WalletProvider with ChangeNotifier {
     _message = '⏳ Sending transaction...';
     notifyListeners();
 
-    final sendResult = await _ws.sendTransactionLocallySigned(
-      privateKeyWif: _privateKey!,
-      fromAddress: _address!,
-      toAddress: address,
-      amount: amount,
-      feeRateOverride: feeRate,
-      isSweep: isSweep,
-      preSelectedUtxos: preSelectedUtxos,
-    );
+    try {
+      await _ws.rpcRequest('getblockchaininfo');
+      _clearRpcUnavailableWarningIfPresent();
+    } catch (_) {
+      _setRpcUnavailableWarning();
+      notifyListeners();
+      _isCurrentlySending = false;
+      return {
+        'success': false,
+        'message': rpcUnavailableWarning,
+      };
+    }
+
+    Map<String, dynamic> sendResult;
+    try {
+      sendResult = await _ws.sendTransactionLocallySigned(
+        privateKeyWif: _privateKey!,
+        fromAddress: _address!,
+        toAddress: address,
+        amount: amount,
+        feeRateOverride: feeRate,
+        isSweep: isSweep,
+        preSelectedUtxos: preSelectedUtxos,
+      );
+    } catch (e) {
+      _setRpcUnavailableWarning();
+      notifyListeners();
+      _isCurrentlySending = false;
+      return {
+        'success': false,
+        'message': rpcUnavailableWarning,
+      };
+    }
 
     if (!sendResult['success']) {
+      final sendMessage = (sendResult['message'] ?? 'Transaction failed').toString();
+      if ((sendResult['rpcUnavailable'] == true) || _looksLikeRpcFailureText(sendMessage)) {
+        _setRpcUnavailableWarning();
+      } else if (_rpcError != null) {
+        _clearRpcUnavailableWarningIfPresent();
+      }
       _message = '❌ ${sendResult['message'] ?? 'Transaction failed'}';
       notifyListeners();
       _isCurrentlySending = false;
