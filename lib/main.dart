@@ -12,8 +12,6 @@ import 'package:bitcoinsilver_wallet/views/setup_view.dart';
 import 'package:bitcoinsilver_wallet/views/biometric_gate.dart';
 import 'package:bitcoinsilver_wallet/views/chat/chat_view.dart';
 import 'package:bitcoinsilver_wallet/services/chat_notification_service.dart';
-// Migration service removed - was causing issues on Play Store updates
-// import 'package:bitcoinsilver_wallet/services/migration_service.dart';
 
 // Backend URL - HTTPS endpoint
 const String backendUrl = 'https://bitcoinsilver.eu';
