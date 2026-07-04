@@ -43,7 +43,12 @@
   - Added secure-storage preflight and fail-closed behavior before irreversible sweep operations.
   - Added migration integrity checks for migrated private key/address consistency before success handoff.
   - Added detailed failure dialog path so users get clear migration error reasons.
-  - Enforced backup-first success flow with mandatory backup confirmation dialog.
+  - Added stage-based migration progress dialogs for both pre-send preparation and send/finalize phases.
+  - Added migration interruption handling with explicit user guidance when app context changes mid-flow.
+  - Added migration cancellation feedback dialog so exits are not silent.
+  - Added one-tap "Copy All Backup Data" action (formatted address + seed + WIF + optional sweep amount).
+  - Enforced post-success backup confirmation dialog before final completion.
+  - Updated empty-wallet migration success wording to avoid claiming a transaction was sent.
 - Fee Estimation Hardening:
   - Handles `estimatesmartfee` failures explicitly (RPC errors, missing `feerate`, and `feerate: -1` / no estimate).
   - Adds send-time manual fee entry fallback when estimation is unavailable.
@@ -57,6 +62,11 @@
     - High: `0.10 BTCS/kvB`
 - Resume/Background Reliability:
   - Improved silent transaction refresh behavior so latest transactions are reloaded after app resume/background transitions.
+  - Added shared wallet sync coalescing for timer/resume/manual refresh to avoid overlapping sync races.
+  - Reduced startup blocking when RPC is unavailable while preserving RPC warning visibility.
+- Send Preview Consistency:
+  - Transaction preview now updates live on amount edits.
+  - Auto input-selection mode now shows computed expected change instead of "Auto".
 - Performance improvements and dependency updates.
 
 ## Quick Start
@@ -128,6 +138,8 @@ Use this quick checklist after migration-related changes:
 - Storage Guard: Secure storage preflight succeeds before sweep/save steps.
 - Integrity Guard: On success, migrated private key and derived address are validated.
 - Backup Gate: Success requires user backup confirmation dialog completion.
+- Backup Copy Action: Users can copy all migration backup data in one formatted payload.
+- Interruption UX: Context-loss/interruption is surfaced with a retry-in-one-go notice.
 - Failure UX: Any failure path shows a clear reason dialog and keeps old wallet active.
 - Resume Sync: After app resume/background transitions, latest transactions reload correctly.
 
