@@ -81,7 +81,7 @@ class AboutView extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'Version 5.6.3',
+                    'Version 5.6.5',
                     style: TextStyle(color: Colors.cyanAccent, fontSize: 14),
                   ),
                 ),
@@ -374,7 +374,7 @@ class AboutView extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.gavel_rounded, color: Colors.cyanAccent, size: 20),
+              const Icon(Icons.policy_outlined, color: Colors.cyanAccent, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

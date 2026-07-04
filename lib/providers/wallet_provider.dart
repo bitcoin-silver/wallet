@@ -507,6 +507,22 @@ class WalletProvider with ChangeNotifier {
       _privateKey = privateKey;
       _address = address;
       _mnemonic = mnemonic;
+
+      // Switching wallet identity must also reset transient balance/pending state
+      // so previous wallet activity does not leak into the new wallet UI.
+      _balance = 0.0;
+      _pendingBalance = 0.0;
+      _isPending = false;
+      _utxos = [];
+      _pendingTxids.clear();
+      _pendingTimestamps.clear();
+      _pendingTransactions.clear();
+      _availableUtxos = [];
+      _selectedUtxoKeys.clear();
+      _isLoadingUtxos = false;
+      _utxoPage = 0;
+      _lastFetch = null;
+
       notifyListeners();
     } catch (_) {
       // Attempt to restore previously persisted wallet data on partial writes.
@@ -924,6 +940,21 @@ class WalletProvider with ChangeNotifier {
     return await _ws.getNetworkInfo();
   }
 
+  Future<bool> runMigrationStoragePreflight() async {
+    try {
+      await _storage.write(
+        key: 'migration_preflight',
+        value: DateTime.now().toIso8601String(),
+      );
+      await _storage.delete(key: 'migration_preflight');
+      return true;
+    } catch (e) {
+      _lastError = 'Migration failed: secure storage is unavailable. $e';
+      return false;
+    }
+  }
+
+  @Deprecated('Legacy direct migration path. Use staged migration flow in SettingsView._showMigrationDialog.')
   Future<bool> migrateToSeed({int words = 12}) async {
     if (_privateKey == null || _address == null) return false;
 
@@ -956,10 +987,28 @@ class WalletProvider with ChangeNotifier {
       }
 
       if (currentBalance > 0.00001) {
+        // Ensure migration sweep uses a known fee rate and does not depend on a
+        // second smart-fee lookup during send.
+        if (!_feeEstimateAvailable) {
+          final feeReady = await fetchFeeRate();
+          if (!feeReady) {
+            _lastError = 'Migration failed: ${_feeEstimateError ?? 'Network fee estimate unavailable'}';
+            _message = '❌ Migration failed: ${_feeEstimateError ?? 'Network fee estimate unavailable'}';
+            _isLoading = false;
+            notifyListeners();
+            return false;
+          }
+        }
+
         // 2. Sweep funds
         _message = '⏳ Sweeping funds to new address...';
         notifyListeners();
-        final result = await sendTransaction(newAddress, currentBalance, isSweep: true);
+        final result = await sendTransaction(
+          newAddress,
+          currentBalance,
+          feeRate: _feeRate,
+          isSweep: true,
+        );
 
         if (!result['success']) {
           _lastError = 'Migration failed: ${result['message']}';

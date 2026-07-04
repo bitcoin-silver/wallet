@@ -19,6 +19,8 @@ const String btcsDisclaimerResponsibilityText =
   'You are solely responsible for protecting your seed phrase and WIF private key, and for complying with local laws and tax obligations.';
 const String btcsDisclaimerText =
   'BTCS (Bitcoin Silver) is a fully decentralized, open-source cryptocurrency based on the Proof-of-Work algorithm. There is no corporate entity, no pre-sale and no developer allocation. This website is for technical and informational purposes only. The software is provided "as is", without warranty of any kind. Users are solely responsible for securing their private keys and seed phrases and for complying with applicable local laws and tax regulations. BTCS does not constitute a crypto-asset service under EU Regulation 2023/1114 (MiCA).';
+const String _pendingMigrationInterruptedNoticeKey =
+    'pending_migration_interrupted_notice';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -43,6 +45,26 @@ class _SettingsViewState extends State<SettingsView> {
     super.initState();
     _checkBiometricStatus();
     _loadNotificationPreference();
+    _consumePendingMigrationInterruptedNotice();
+  }
+
+  Future<void> _markPendingMigrationInterruptedNotice() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_pendingMigrationInterruptedNoticeKey, true);
+  }
+
+  Future<void> _consumePendingMigrationInterruptedNotice() async {
+    final prefs = await SharedPreferences.getInstance();
+    final shouldShow = prefs.getBool(_pendingMigrationInterruptedNoticeKey) ?? false;
+    if (!shouldShow) return;
+
+    await prefs.remove(_pendingMigrationInterruptedNoticeKey);
+    if (!mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showMigrationInterruptedDialog(context);
+    });
   }
 
   Future<void> _loadNotificationPreference() async {
@@ -346,6 +368,7 @@ class _SettingsViewState extends State<SettingsView> {
 
     final confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
@@ -407,99 +430,770 @@ class _SettingsViewState extends State<SettingsView> {
       ),
     );
 
-    if (confirmed == true) {
-      if (!context.mounted) return;
+    if (confirmed != true) return;
+    if (!context.mounted) return;
 
-      // Safety pre-check: funded wallets need smart fee estimation before sweep.
+    BuildContext? preparingDialogContext;
+    final preparingMessage = ValueNotifier<String>('Preparing migration...');
+    bool preparingMessageDisposed = false;
+
+    void disposePreparingMessageIfNeeded() {
+      if (preparingMessageDisposed) return;
+      preparingMessage.dispose();
+      preparingMessageDisposed = true;
+    }
+
+    void closePreparingDialogIfOpen() {
+      final dialogContext = preparingDialogContext;
+      if (dialogContext == null) return;
+
+      try {
+        Navigator.of(dialogContext).pop();
+      } catch (_) {
+        // If already closed, ignore.
+      } finally {
+        preparingDialogContext = null;
+        disposePreparingMessageIfNeeded();
+      }
+    }
+
+    Future<void> setPreparingStage(
+      String message, {
+      int minVisibleMs = 220,
+    }) async {
+      if (preparingMessageDisposed) return;
+      preparingMessage.value = message;
+      await Future<void>.delayed(Duration(milliseconds: minVisibleMs));
+    }
+
+    showDialog(
+      context: context,
+      useRootNavigator: false,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        preparingDialogContext = dialogContext;
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          content: ValueListenableBuilder<String>(
+            valueListenable: preparingMessage,
+            builder: (context, message, _) {
+              return Row(
+                children: [
+                  const CircularProgressIndicator(color: Colors.cyanAccent),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      message,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+
+    try {
+      // Safety pre-checks before generating migration wallet data.
+      await setPreparingStage('Refreshing wallet balance...', minVisibleMs: 220);
       await wp.refreshBalance();
       if (!context.mounted) return;
 
       if (wp.hasPendingTransactions) {
+        closePreparingDialogIfOpen();
         await _showMigrationPendingDialog(context, wp.pendingTransactionsCount);
         return;
       }
 
       final currentBalance = wp.balance ?? 0.0;
       if (currentBalance > 0.00001) {
+        await setPreparingStage('Checking network fee estimate...', minVisibleMs: 240);
         final smartFeeAvailable = await wp.fetchFeeRate();
         if (!context.mounted) return;
 
         if (!smartFeeAvailable) {
+          closePreparingDialogIfOpen();
           await _showSmartFeeUnavailableDialog(context, wp.feeEstimateError);
           return;
         }
       }
-      
-      // Show loading indicator
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.cyanAccent)),
+
+      // Generate new wallet first and let user review/save it before sending.
+      await setPreparingStage('Generating new seed wallet...', minVisibleMs: 300);
+      final walletData = await wp.walletService.generateNewSeedWallet(words: migrationSeedWords);
+      final newAddress = walletData['address'] ?? '';
+      final newPrivateKey = walletData['privateKey'] ?? '';
+      final newMnemonic = walletData['mnemonic'] ?? '';
+
+      final derived = wp.walletService.loadAddressFromKey(newPrivateKey);
+      if (newAddress.isEmpty || newPrivateKey.isEmpty || derived == null || derived != newAddress) {
+        closePreparingDialogIfOpen();
+        await _showMigrationFailedDialog(
+          context,
+          'Generated migration wallet failed integrity checks. Please retry migration.',
+        );
+        return;
+      }
+
+      closePreparingDialogIfOpen();
+
+      final continueWithSend = await _showMigrationPreparedWalletDialog(
+        context,
+        newAddress: newAddress,
+        privateKey: newPrivateKey,
+        mnemonic: newMnemonic,
+        amountToSend: currentBalance,
       );
 
-      final success = await wp.migrateToSeed(words: migrationSeedWords);
+      if (!context.mounted) {
+        await _markPendingMigrationInterruptedNotice();
+        return;
+      }
 
-      if (!context.mounted) return;
-      Navigator.pop(context); // Close loading indicator
+      if (continueWithSend != true) {
+        await _showMigrationCancelledDialog(context);
+        return;
+      }
 
-      if (success) {
-        final migratedAddress = wp.address;
-        final migratedPrivateKey = wp.privateKey;
-        final migratedMnemonic = wp.mnemonic;
+      // If this route is no longer active (e.g., app backgrounded and navigation changed),
+      // abort migration flow to avoid continuing from a stale context.
+      if (!(ModalRoute.of(context)?.isCurrent ?? false)) {
+        await _showMigrationInterruptedDialog(context);
+        return;
+      }
 
-        String? effectiveAddress = migratedAddress;
-        if (migratedPrivateKey != null &&
-            (effectiveAddress == null || effectiveAddress.isEmpty)) {
-          effectiveAddress = wp.walletService.loadAddressFromKey(migratedPrivateKey);
+      // Keep old wallet active unless everything below succeeds.
+      BuildContext? progressDialogContext;
+      final progressMessage = ValueNotifier<String>('Preparing migration...');
+      bool progressMessageDisposed = false;
+
+      void disposeProgressMessageIfNeeded() {
+        if (progressMessageDisposed) return;
+        progressMessage.dispose();
+        progressMessageDisposed = true;
+      }
+
+      void closeProgressDialogIfOpen() {
+        final dialogContext = progressDialogContext;
+        if (dialogContext == null) return;
+
+        try {
+          Navigator.of(dialogContext).pop();
+        } catch (_) {
+          // If the dialog is already closed, ignore.
+        } finally {
+          progressDialogContext = null;
+          disposeProgressMessageIfNeeded();
         }
+      }
 
-        if (migratedPrivateKey == null ||
-            effectiveAddress == null ||
-            effectiveAddress.isEmpty) {
-          await _showMigrationFailedDialog(
-            context,
-            'Migration completed but wallet data is incomplete (missing private key or address). '
-            'Your previous wallet remains active.',
+      Future<void> setProgressStage(
+        String message, {
+        int minVisibleMs = 220,
+      }) async {
+        if (progressMessageDisposed) return;
+        progressMessage.value = message;
+        await Future<void>.delayed(Duration(milliseconds: minVisibleMs));
+      }
+
+      showDialog(
+        context: context,
+        useRootNavigator: false,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          progressDialogContext = dialogContext;
+          return AlertDialog(
+            backgroundColor: Color(0xFF1A1A1A),
+            content: ValueListenableBuilder<String>(
+              valueListenable: progressMessage,
+              builder: (context, message, _) {
+                return Row(
+                  children: [
+                    const CircularProgressIndicator(color: Colors.cyanAccent),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        message,
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           );
-          return;
+        },
+      );
+
+      // Give the dialog one frame to render before starting async migration work,
+      // so users reliably see stage updates.
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      try {
+        await setProgressStage('Checking secure storage...', minVisibleMs: 240);
+
+        final storageReady = await wp.runMigrationStoragePreflight();
+        if (!storageReady) {
+          throw Exception(wp.lastError ?? 'Secure storage is unavailable.');
         }
 
-        if (migratedAddress != null &&
-            migratedAddress.isNotEmpty &&
-            migratedAddress != effectiveAddress) {
-          await _showMigrationFailedDialog(
-            context,
-            'Migration integrity check failed: derived address does not match stored address. '
-            'Your previous wallet remains active.',
+        Map<String, dynamic> sweepResult = {'success': true};
+
+        if (currentBalance > 0.00001) {
+          await setProgressStage('Sending migration transaction...', minVisibleMs: 260);
+
+          sweepResult = await wp.sendTransaction(
+            newAddress,
+            currentBalance,
+            feeRate: wp.feeRate,
+            isSweep: true,
           );
-          return;
+
+          if (sweepResult['success'] != true) {
+            throw Exception((sweepResult['message'] ?? 'Sweep failed').toString());
+          }
+
+          final txid = (sweepResult['txid'] ?? '').toString();
+          await setProgressStage(
+            txid.isNotEmpty
+                ? 'Transaction broadcast (${txid.substring(0, 8)}...). Finalizing migration...'
+                : 'Transaction broadcast. Finalizing migration...',
+            minVisibleMs: 320,
+          );
+        } else {
+          await setProgressStage('No sweep needed. Finalizing migration...', minVisibleMs: 320);
         }
 
-        await _showMigrationBackupDialog(
+        await setProgressStage('Saving new wallet...', minVisibleMs: 220);
+        await wp.saveWallet(newAddress, newPrivateKey, mnemonic: newMnemonic);
+
+        await setProgressStage('Refreshing wallet balance...', minVisibleMs: 220);
+        await wp.refreshBalance();
+
+        await setProgressStage('Loading updated transaction history...', minVisibleMs: 220);
+        await bp.loadBlockchain(newAddress);
+
+        closeProgressDialogIfOpen();
+        if (!context.mounted) return;
+
+        await _showMigrationTxSuccessDialog(
           context,
-          migratedPrivateKey,
-          effectiveAddress,
-          mnemonic: migratedMnemonic,
+          txid: (sweepResult['txid'] ?? '').toString(),
+          newAddress: newAddress,
+          amount: currentBalance,
         );
 
         if (!context.mounted) return;
-        await bp.loadBlockchain(effectiveAddress);
+
+        final backupConfirmed = await _showMigrationPostSuccessBackupDialog(
+          context,
+          newAddress: newAddress,
+          privateKey: newPrivateKey,
+          mnemonic: newMnemonic,
+        );
+
+        if (backupConfirmed != true || !context.mounted) {
+          return;
+        }
+
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Migration successful! Back up your new seed phrase and private key.'),
+            content: Text('Migration complete. New wallet loaded.'),
             backgroundColor: Colors.green,
           ),
         );
-      } else {
-        await _showMigrationFailedDialog(context, wp.lastError);
+      } catch (e) {
+        closeProgressDialogIfOpen();
+        if (context.mounted) {
+          await _showMigrationFailedDialog(context, e.toString());
+        }
+        return;
+      } finally {
+        disposeProgressMessageIfNeeded();
       }
+    } catch (e) {
+      closePreparingDialogIfOpen();
+      if (!context.mounted) return;
+      await _showMigrationFailedDialog(context, e.toString());
+    } finally {
+      disposePreparingMessageIfNeeded();
     }
+  }
+
+  String _formatMigrationBackupData({
+    required String newAddress,
+    required String privateKey,
+    required String mnemonic,
+    double? plannedSweepAmountBtcs,
+  }) {
+    final buffer = StringBuffer();
+    buffer.writeln('Bitcoin Silver Wallet - Migration Backup');
+    buffer.writeln('Generated: ${DateTime.now().toIso8601String()}');
+    buffer.writeln('');
+    buffer.writeln('New Address:');
+    buffer.writeln(newAddress);
+    buffer.writeln('');
+    if (mnemonic.isNotEmpty) {
+      buffer.writeln('Seed Phrase:');
+      buffer.writeln(mnemonic);
+      buffer.writeln('');
+    }
+    buffer.writeln('Private Key (WIF):');
+    buffer.writeln(privateKey);
+    if (plannedSweepAmountBtcs != null) {
+      buffer.writeln('');
+      buffer.writeln('Planned Sweep Amount (BTCS):');
+      buffer.writeln(plannedSweepAmountBtcs.toStringAsFixed(8));
+    }
+    return buffer.toString();
+  }
+
+  Future<void> _copyMigrationBackupData(
+    BuildContext context, {
+    required String newAddress,
+    required String privateKey,
+    required String mnemonic,
+    double? plannedSweepAmountBtcs,
+  }) async {
+    final payload = _formatMigrationBackupData(
+      newAddress: newAddress,
+      privateKey: privateKey,
+      mnemonic: mnemonic,
+      plannedSweepAmountBtcs: plannedSweepAmountBtcs,
+    );
+
+    await Clipboard.setData(ClipboardData(text: payload));
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Migration backup data copied to clipboard'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  Future<bool?> _showMigrationPreparedWalletDialog(
+    BuildContext context, {
+    required String newAddress,
+    required String privateKey,
+    required String mnemonic,
+    required double amountToSend,
+  }) async {
+    bool hasSaved = false;
+
+    return showDialog<bool>(
+      context: context,
+      useRootNavigator: false,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1A1A1A),
+              title: const Row(
+                children: [
+                  Icon(Icons.verified_user, color: Colors.cyanAccent),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Review New Seed Wallet',
+                      style: TextStyle(color: Colors.white, fontSize: 18),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      amountToSend > 0.00001
+                          ? 'The app generated a new wallet. Save it now, then confirm sending ${amountToSend.toStringAsFixed(8)} BTCS to this new address.'
+                          : 'The app generated a new wallet. Save it now and confirm loading this wallet.',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('New Address', style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      newAddress,
+                      style: const TextStyle(color: Colors.white60, fontFamily: 'monospace', fontSize: 12),
+                    ),
+                    const SizedBox(height: 10),
+                    if (mnemonic.isNotEmpty) ...[
+                      const Text('Seed Phrase', style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 4),
+                      SelectableText(
+                        mnemonic,
+                        style: const TextStyle(color: Colors.white60, fontSize: 12),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    const Text('Private Key (WIF)', style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      privateKey,
+                      style: const TextStyle(color: Colors.white60, fontFamily: 'monospace', fontSize: 11),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => _copyMigrationBackupData(
+                          dialogContext,
+                          newAddress: newAddress,
+                          privateKey: privateKey,
+                          mnemonic: mnemonic,
+                          plannedSweepAmountBtcs: amountToSend,
+                        ),
+                        icon: const Icon(Icons.copy, size: 16, color: Colors.cyanAccent),
+                        label: const Text(
+                          'Copy All Backup Data',
+                          style: TextStyle(color: Colors.cyanAccent),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (amountToSend > 0.00001)
+                      Text(
+                        'Planned sweep amount: ${amountToSend.toStringAsFixed(8)} BTCS',
+                        style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+                      ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Important: complete migration in one go. Avoid switching apps, locking the screen, or navigating away until migration finishes.',
+                      style: TextStyle(color: Colors.redAccent, fontSize: 12, fontStyle: FontStyle.italic),
+                    ),
+                    const SizedBox(height: 8),
+                    CheckboxListTile(
+                      value: hasSaved,
+                      onChanged: (value) {
+                        setState(() {
+                          hasSaved = value ?? false;
+                        });
+                      },
+                      activeColor: Colors.cyanAccent,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text(
+                        'I saved the new seed phrase/private key and want to continue.',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                ),
+                ElevatedButton(
+                  onPressed: hasSaved ? () => Navigator.of(dialogContext).pop(true) : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.cyanAccent,
+                    foregroundColor: Colors.black,
+                  ),
+                  child: Text(amountToSend > 0.00001 ? 'Continue & Send' : 'Load New Wallet'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showMigrationInterruptedDialog(BuildContext context) async {
+    if (!context.mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.orangeAccent),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Migration Interrupted',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Migration could not continue because app context changed in the middle of the flow.',
+              style: TextStyle(color: Colors.white70),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Please retry migration in one continuous session and avoid switching apps or opening other screens until it completes.',
+              style: TextStyle(color: Colors.redAccent, fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.black,
+            ),
+            child: const Text('OK, I Will Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showMigrationCancelledDialog(BuildContext context) async {
+    if (!context.mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: false,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.cyanAccent),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Migration Cancelled',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Migration was cancelled before sending. If you want to continue, please start migration again and complete it in one go.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.cyanAccent,
+              foregroundColor: Colors.black,
+            ),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showMigrationPostSuccessBackupDialog(
+    BuildContext context, {
+    required String newAddress,
+    required String privateKey,
+    required String mnemonic,
+  }) async {
+    bool hasSaved = false;
+
+    return showDialog<bool>(
+      context: context,
+      useRootNavigator: false,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Backup Required',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Migration succeeded. Before continuing, confirm you saved the new wallet recovery details.',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'New Address',
+                      style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      newAddress,
+                      style: const TextStyle(color: Colors.white60, fontFamily: 'monospace', fontSize: 12),
+                    ),
+                    const SizedBox(height: 10),
+                    if (mnemonic.isNotEmpty) ...[
+                      const Text(
+                        'Seed Phrase',
+                        style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      SelectableText(
+                        mnemonic,
+                        style: const TextStyle(color: Colors.white60, fontSize: 12),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    const Text(
+                      'Private Key (WIF)',
+                      style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      privateKey,
+                      style: const TextStyle(color: Colors.white60, fontFamily: 'monospace', fontSize: 11),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => _copyMigrationBackupData(
+                          dialogContext,
+                          newAddress: newAddress,
+                          privateKey: privateKey,
+                          mnemonic: mnemonic,
+                        ),
+                        icon: const Icon(Icons.copy, size: 16, color: Colors.orangeAccent),
+                        label: const Text(
+                          'Copy All Backup Data',
+                          style: TextStyle(color: Colors.orangeAccent),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    CheckboxListTile(
+                      value: hasSaved,
+                      onChanged: (value) {
+                        setState(() {
+                          hasSaved = value ?? false;
+                        });
+                      },
+                      activeColor: Colors.orangeAccent,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text(
+                        'I saved my new seed phrase and private key securely.',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                ElevatedButton(
+                  onPressed: hasSaved ? () => Navigator.of(dialogContext).pop(true) : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: hasSaved ? Colors.orangeAccent : Colors.grey,
+                    foregroundColor: Colors.black,
+                  ),
+                  child: const Text('I Saved It - Continue'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showMigrationTxSuccessDialog(
+    BuildContext context, {
+    required String txid,
+    required String newAddress,
+    required double amount,
+  }) async {
+    final hasSweepTx = amount > 0.00001;
+
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: false,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.greenAccent),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                hasSweepTx ? 'Migration Transaction Sent' : 'Migration Complete',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              hasSweepTx
+                  ? 'Funds were sent to your new seed wallet. The new wallet is now loaded.'
+                  : 'No funds needed to be moved. Your new seed wallet is now loaded.',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 10),
+            const Text('New Address', style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            SelectableText(
+              newAddress,
+              style: const TextStyle(color: Colors.white60, fontFamily: 'monospace', fontSize: 12),
+            ),
+            if (txid.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Text('Transaction ID', style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              SelectableText(
+                txid,
+                style: const TextStyle(color: Colors.white60, fontFamily: 'monospace', fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.cyanAccent,
+              foregroundColor: Colors.black,
+            ),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showMigrationPendingDialog(BuildContext context, int pendingCount) async {
     await showDialog<void>(
       context: context,
+      useRootNavigator: false,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         title: const Row(
@@ -550,6 +1244,7 @@ class _SettingsViewState extends State<SettingsView> {
 
     await showDialog<void>(
       context: context,
+      useRootNavigator: false,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         title: const Row(
@@ -612,6 +1307,7 @@ class _SettingsViewState extends State<SettingsView> {
 
     return showDialog<bool>(
       context: context,
+      useRootNavigator: false,
       barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(
@@ -642,7 +1338,7 @@ class _SettingsViewState extends State<SettingsView> {
                     const SizedBox(height: 12),
                     const Text(
                       'Important:',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     const Text(
@@ -695,6 +1391,7 @@ class _SettingsViewState extends State<SettingsView> {
   Future<void> _showSmartFeeUnavailableDialog(BuildContext context, String? feeError) async {
     await showDialog<void>(
       context: context,
+      useRootNavigator: false,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         title: const Row(
@@ -759,196 +1456,6 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Future<void> _showMigrationBackupDialog(
-    BuildContext context,
-    String privateKey,
-    String address, {
-    String? mnemonic,
-  }) async {
-    await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        bool hasConfirmed = false;
-
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              backgroundColor: const Color.fromARGB(255, 25, 25, 25),
-              title: Row(
-                children: [
-                  const Icon(Icons.warning, color: Colors.red, size: 24),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Backup Your New Wallet !',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                ],
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '⚠️ IMPORTANT: Your migration is complete, but you must back up the new recovery data now.',
-                      style: TextStyle(
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Write down your seed phrase and private key immediately. If you lose them, you may lose access to this migrated wallet forever.',
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      '⚠️ CRITICAL WARNINGS:',
-                      style: TextStyle(
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '• Never share this with anyone\n• This is the ONLY way to recover your wallet\n• If you lose it, your funds are GONE FOREVER\n• Write it on paper and store it securely',
-                      style: TextStyle(color: Colors.white60, fontSize: 12),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Verified New Address:',
-                      style: TextStyle(
-                        color: Colors.cyanAccent,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'This is your new wallet address.',
-                      style: TextStyle(color: Colors.white54, fontSize: 11),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.3)),
-                      ),
-                      child: SelectableText(
-                        address,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontFamily: 'monospace',
-                          color: Colors.cyanAccent,
-                        ),
-                      ),
-                    ),
-                    if (mnemonic != null) ...[
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Your Seed Phrase:',
-                        style: TextStyle(
-                          color: Colors.orange,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
-                        ),
-                        child: SelectableText(
-                          mnemonic,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontFamily: 'monospace',
-                            color: Colors.orange,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Your Raw Private Key:',
-                      style: TextStyle(
-                        color: Colors.white38,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 10,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                      ),
-                      child: SelectableText(
-                        privateKey,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'monospace',
-                          color: Colors.white38,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Checkbox(
-                          value: hasConfirmed,
-                          onChanged: (bool? value) {
-                            setState(() {
-                              hasConfirmed = value ?? false;
-                            });
-                          },
-                          checkColor: Colors.black,
-                          activeColor: Colors.orange,
-                        ),
-                        Expanded(
-                          child: Text(
-                            'I have written down my seed phrase and private key',
-                            style: const TextStyle(color: Colors.white, fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                ElevatedButton(
-                  onPressed: hasConfirmed ? () => Navigator.of(context).pop(true) : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: hasConfirmed ? Colors.orange : Colors.grey,
-                    foregroundColor: Colors.black,
-                  ),
-                  child: const Text('I Saved It - Continue'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
   Future<void> _showDisclaimerDialog(BuildContext context) async {
     await showDialog<void>(
       context: context,
@@ -956,7 +1463,7 @@ class _SettingsViewState extends State<SettingsView> {
         backgroundColor: const Color(0xFF1A1A1A),
         title: const Row(
           children: [
-            Icon(Icons.gavel_rounded, color: Colors.cyanAccent),
+            Icon(Icons.policy_outlined, color: Colors.cyanAccent),
             SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -1522,7 +2029,7 @@ class _SettingsViewState extends State<SettingsView> {
                       'Disclaimer',
                       style: TextStyle(color: Colors.white),
                     ),
-                    leading: const Icon(Icons.gavel_rounded, color: Colors.white),
+                    leading: const Icon(Icons.policy_outlined, color: Colors.white),
                     onTap: () => _showDisclaimerDialog(context),
                   ),
                   const Divider(color: Colors.white),

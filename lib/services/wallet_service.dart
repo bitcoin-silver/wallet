@@ -498,9 +498,11 @@ class WalletService {
       }
     }
 
-    final totalAvailable =
-        utxos.fold(0.0, (sum, u) => sum + (u['amount'] as num).toDouble());
-    final bool shouldSweep = isSweep || amount >= totalAvailable - 0.00001;
+    const int satsPerBtcs = 100000000;
+    final int totalAvailableSats =
+      utxos.fold(0, (sum, u) => sum + (((u['amount'] as num).toDouble() * satsPerBtcs).round()));
+    final int requestedAmountSats = (amount * satsPerBtcs).round();
+    final bool shouldSweep = isSweep || requestedAmountSats >= (totalAvailableSats - 1);
 
     utxos.sort((a, b) =>
         ((b['amount'] as num).toDouble()).compareTo((a['amount'] as num).toDouble()));
@@ -578,11 +580,11 @@ class WalletService {
     }
 
     final selectedUtxos = <Map<String, dynamic>>[];
-    double inputSum = 0.0;
+    int inputSumSats = 0;
 
     for (int i = 0; i < utxos.length; i++) {
       selectedUtxos.add(utxos[i]);
-      inputSum += (utxos[i]['amount'] as num).toDouble();
+      inputSumSats += (((utxos[i]['amount'] as num).toDouble() * satsPerBtcs).round());
 
       if (shouldSweep && i < utxos.length - 1) {
         continue;
@@ -600,9 +602,10 @@ class WalletService {
         txSize += destOutputSize + changeOutputSize;
       }
 
-      final actualFee = double.parse((feeRate * txSize / 1000).toStringAsFixed(8));
-      final needed = shouldSweep ? actualFee : amount + actualFee;
-      if (inputSum < needed) {
+      final int feeSats = ((feeRate * txSize / 1000) * satsPerBtcs).ceil();
+      final double actualFee = feeSats / satsPerBtcs;
+      final int neededSats = shouldSweep ? feeSats : requestedAmountSats + feeSats;
+      if (inputSumSats < neededSats) {
         continue;
       }
 
@@ -621,7 +624,7 @@ class WalletService {
           txid: u['txid'] as String,
           vout: u['vout'] as int,
           scriptPubKey: Uint8List.fromList(HEX.decode(scriptHex)),
-          satoshis: ((u['amount'] as num).toDouble() * 1e8).round(),
+          satoshis: ((u['amount'] as num).toDouble() * satsPerBtcs).round(),
         );
       }).toList();
 
@@ -630,7 +633,7 @@ class WalletService {
       int sendSats = 0;
       try {
         if (shouldSweep) {
-          final sweepSats = ((inputSum - actualFee) * 1e8).round();
+          final sweepSats = inputSumSats - feeSats;
           if (sweepSats <= 546) {
             return {'success': false, 'message': 'Balance too low to cover fees.'};
           }
@@ -640,13 +643,13 @@ class WalletService {
             satoshis: sweepSats,
           ));
         } else {
-          sendSats = (amount * 1e8).round();
+          sendSats = requestedAmountSats;
           outputs.add(BTCSTxOutput(
             scriptPubKey: BTCSSigner.scriptFromAddress(toAddress),
             satoshis: sendSats,
           ));
 
-          changeSats = ((inputSum - amount - actualFee) * 1e8).round();
+          changeSats = inputSumSats - sendSats - feeSats;
           if (changeSats > 546) {
             outputs.add(BTCSTxOutput(
               scriptPubKey: BTCSSigner.scriptFromAddress(fromAddress),
@@ -683,8 +686,8 @@ class WalletService {
                     'amount': (u['amount'] as num).toDouble(),
                   })
               .toList(),
-          'changeAmount': changeSats > 0 ? changeSats / 1e8 : 0.0,
-          'sentAmount': sendSats / 1e8,
+          'changeAmount': changeSats > 0 ? changeSats / satsPerBtcs : 0.0,
+          'sentAmount': sendSats / satsPerBtcs,
         };
       }
 
@@ -712,7 +715,7 @@ class WalletService {
 
     return {
       'success': false,
-      'message': 'Insufficient funds. Available: ${inputSum.toStringAsFixed(8)} BTCS.',
+      'message': 'Insufficient funds. Available: ${(inputSumSats / satsPerBtcs).toStringAsFixed(8)} BTCS.',
     };
     } catch (e) {
       return {

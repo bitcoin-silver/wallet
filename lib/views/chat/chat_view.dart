@@ -167,7 +167,7 @@ class ChatView extends StatefulWidget {
   State<ChatView> createState() => _ChatViewState();
 }
 
-class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
+class _ChatViewState extends State<ChatView> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
@@ -180,7 +180,6 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
 
     // Initialize chat
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -196,7 +195,6 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _messageController.dispose();
     _scrollController.dispose();
     _messageFocusNode.dispose();
@@ -218,14 +216,6 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _chatProvider ??= Provider.of<ChatProvider>(context, listen: false);
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      debugPrint('ChatView: App resumed, re-initializing chat...');
-      _initializeChat();
-    }
   }
 
   void _initializeChat() async {

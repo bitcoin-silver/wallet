@@ -15,6 +15,8 @@ class SendView extends StatefulWidget {
 }
 
 class _SendViewState extends State<SendView> {
+  static const int _satsPerBtcs = 100000000;
+
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _manualFeeController = TextEditingController();
@@ -26,6 +28,16 @@ class _SendViewState extends State<SendView> {
   bool? _addressValid;
   bool _isValidatingAddress = false;
   Timer? _addressDebounce;
+
+  int _btcsToSats(double amount) => (amount * _satsPerBtcs).round();
+  double _satsToBtcs(int sats) => sats / _satsPerBtcs;
+
+  int _selectedUtxoTotalSats(WalletProvider provider) {
+    return provider.selectedUtxoList.fold(
+      0,
+      (sum, u) => sum + _btcsToSats((u['amount'] as num).toDouble()),
+    );
+  }
 
   @override
   void initState() {
@@ -79,15 +91,12 @@ class _SendViewState extends State<SendView> {
 
   void _setMaxAmount() {
     final walletProvider = Provider.of<WalletProvider>(context, listen: false);
-    final balance = _advancedSend && walletProvider.selectedUtxoCount > 0
-        ? walletProvider.selectedUtxoTotal
-        : (walletProvider.balance ?? 0.0);
-
-    // Leave some for fees (rough estimate)
-    final fallbackFee = walletProvider.feeEstimateAvailable
-      ? walletProvider.estimatedSimpleFee
-      : 0.00001;
-    final maxAmount = balance > fallbackFee ? balance - fallbackFee : 0.0;
+    // Use full spendable amount in satoshis so the send service enters sweep
+    // mode and computes the exact final sendable value after fee.
+    final maxSats = _advancedSend && walletProvider.selectedUtxoCount > 0
+        ? _selectedUtxoTotalSats(walletProvider)
+        : _btcsToSats(walletProvider.balance ?? 0.0);
+    final maxAmount = _satsToBtcs(maxSats > 0 ? maxSats : 0);
 
     setState(() {
       _amountController.text = maxAmount.toStringAsFixed(8);
@@ -521,13 +530,14 @@ class _SendViewState extends State<SendView> {
     if (value <= 0) return 'Amount must be greater than zero';
     if (value < 0.00000546) return 'Amount below dust threshold (0.00000546 BTCS)';
 
-    final spendable = _advancedSend && provider.selectedUtxoCount > 0
-        ? provider.selectedUtxoTotal
-        : (provider.balance ?? 0.0);
+    final valueSats = _btcsToSats(value);
+    final spendableSats = _advancedSend && provider.selectedUtxoCount > 0
+        ? _selectedUtxoTotalSats(provider)
+        : _btcsToSats(provider.balance ?? 0.0);
 
-    if (value > spendable) {
+    if (valueSats > spendableSats) {
       if (_advancedSend && provider.selectedUtxoCount > 0) {
-        return 'Exceeds selected inputs (${provider.selectedUtxoTotal.toStringAsFixed(8)} BTCS)';
+        return 'Exceeds selected inputs (${_satsToBtcs(spendableSats).toStringAsFixed(8)} BTCS)';
       }
       return 'Exceeds available balance';
     }
@@ -537,7 +547,7 @@ class _SendViewState extends State<SendView> {
 
   void _syncAmountToSelection(WalletProvider provider) {
     if (!_advancedSend) return;
-    final total = provider.selectedUtxoTotal;
+    final total = _satsToBtcs(_selectedUtxoTotalSats(provider));
     _amountController.text = total > 0 ? total.toStringAsFixed(8) : '';
   }
 
@@ -598,7 +608,7 @@ class _SendViewState extends State<SendView> {
           const SizedBox(height: 8),
           if (provider.selectedUtxoCount > 0)
             Text(
-              '${provider.selectedUtxoCount} selected, total ${provider.selectedUtxoTotal.toStringAsFixed(8)} BTCS',
+              '${provider.selectedUtxoCount} selected, total ${_satsToBtcs(_selectedUtxoTotalSats(provider)).toStringAsFixed(8)} BTCS',
               style: const TextStyle(color: Colors.amber, fontSize: 12),
             ),
           const SizedBox(height: 8),
@@ -664,20 +674,132 @@ class _SendViewState extends State<SendView> {
   }
 
   Widget _buildFeeEstimate(WalletProvider provider) {
+    final hasExactCoinControlFee = _advancedSend && provider.selectedUtxoCount > 0;
+    final fee = hasExactCoinControlFee
+        ? provider.estimatedFee
+        : provider.estimatedSimpleFee;
+    final net = provider.estimatedNetSend;
+    final detailsLabel = hasExactCoinControlFee
+        ? 'Size-aware estimate for ${provider.selectedUtxoCount} selected input(s)'
+        : _advancedSend
+            ? 'Typical fee fallback until inputs are selected'
+            : 'Typical fee estimate for a standard transaction';
+    final detailsColor = hasExactCoinControlFee
+      ? Colors.greenAccent
+      : _advancedSend
+        ? Colors.amberAccent
+        : Colors.white54;
+    if (fee <= 0) return const SizedBox.shrink();
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white24),
+        border: Border.all(color: Colors.white10),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Est. fee: ${provider.estimatedFee.toStringAsFixed(8)} BTCS',
-              style: const TextStyle(color: Colors.white70, fontSize: 12)),
-          Text('Net send: ${provider.estimatedNetSend.toStringAsFixed(8)} BTCS',
-              style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Estimated fee: ${fee.toStringAsFixed(8)} BTCS',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              if (hasExactCoinControlFee)
+                Text(
+                  net > 0 ? 'Net: ${net.toStringAsFixed(8)}' : 'Net: -',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            detailsLabel,
+            style: TextStyle(color: detailsColor, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSendPreview(WalletProvider provider) {
+    final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
+    if (amount <= 0) return const SizedBox.shrink();
+
+    final hasSelectedInputs = _advancedSend && provider.selectedUtxoCount > 0;
+    final fee = hasSelectedInputs ? provider.estimatedFee : provider.estimatedSimpleFee;
+
+    final selectedInputsSats = hasSelectedInputs ? _selectedUtxoTotalSats(provider) : 0;
+    final autoSpendableSats = _btcsToSats(provider.balance ?? 0.0);
+    final amountSats = _btcsToSats(amount);
+    final feeSats = _btcsToSats(fee);
+    final expectedChangeSats = hasSelectedInputs
+      ? (selectedInputsSats - amountSats - feeSats)
+      : (autoSpendableSats - amountSats - feeSats);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Transaction Preview',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Selected Inputs', style: TextStyle(color: Colors.white60, fontSize: 12)),
+              Text(
+                hasSelectedInputs
+                    ? '${_satsToBtcs(selectedInputsSats).toStringAsFixed(8)} BTCS'
+                    : 'Auto',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Send Amount', style: TextStyle(color: Colors.white60, fontSize: 12)),
+              Text(
+                '${_satsToBtcs(amountSats).toStringAsFixed(8)} BTCS',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Estimated Fee', style: TextStyle(color: Colors.white60, fontSize: 12)),
+              Text(
+                '${_satsToBtcs(feeSats).toStringAsFixed(8)} BTCS',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Expected Change', style: TextStyle(color: Colors.white60, fontSize: 12)),
+              Text(
+                '${_satsToBtcs(expectedChangeSats > 0 ? expectedChangeSats : 0).toStringAsFixed(8)} BTCS',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -1070,6 +1192,11 @@ class _SendViewState extends State<SendView> {
                             Expanded(
                               child: TextField(
                                 controller: _amountController,
+                                onChanged: (_) {
+                                  setState(() {
+                                    _errorMessage = '';
+                                  });
+                                },
                                 enabled: !_isSending,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 decoration: InputDecoration(
@@ -1107,83 +1234,59 @@ class _SendViewState extends State<SendView> {
                           ],
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
+                        _buildFeeEstimate(walletProvider),
 
-                        Builder(
-                          builder: (context) {
-                            final fee = _advancedSend && walletProvider.selectedUtxoCount > 0
-                                ? walletProvider.estimatedFee
-                                : walletProvider.estimatedSimpleFee;
-                            final label = _advancedSend && walletProvider.selectedUtxoCount > 0
-                                ? 'Est. fee'
-                                : 'Est. fee (typical tx)';
-                            if (fee <= 0) return const SizedBox.shrink();
-                            return Padding(
-                              padding: const EdgeInsets.only(left: 4),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '$label: ${fee.toStringAsFixed(8)} BTCS',
-                                    style: const TextStyle(fontSize: 12, color: Colors.white60),
+                        if (walletProvider.isFeeEstimateLoading)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4, left: 4),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white38,
                                   ),
-                                  if (walletProvider.isFeeEstimateLoading)
-                                    const Padding(
-                                      padding: EdgeInsets.only(top: 4),
-                                      child: Row(
-                                        children: [
-                                          SizedBox(
-                                            width: 12,
-                                            height: 12,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white38,
-                                            ),
-                                          ),
-                                          SizedBox(width: 6),
-                                          Text(
-                                            'Checking network fee estimate...',
-                                            style: TextStyle(fontSize: 11, color: Colors.white54),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  if (!walletProvider.isFeeEstimateLoading &&
-                                      !walletProvider.feeEstimateAvailable)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.warning_amber_rounded,
-                                            color: Colors.amberAccent,
-                                            size: 14,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              'Automatic fee estimate unavailable. You will be asked to enter low/high manual fee on send.',
-                                              style: const TextStyle(fontSize: 11, color: Colors.amberAccent),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Checking network fee estimate...',
+                                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (!walletProvider.isFeeEstimateLoading &&
+                            !walletProvider.feeEstimateAvailable)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4, left: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.amberAccent,
+                                  size: 14,
+                                ),
+                                SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Automatic fee estimate unavailable. You will be asked to enter low/high manual fee on send.',
+                                    style: TextStyle(fontSize: 11, color: Colors.amberAccent),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
 
                         if (_advancedSend) ...[
                           const SizedBox(height: 16),
                           _buildUtxoSelector(walletProvider),
                         ],
 
-                        if (_advancedSend && walletProvider.selectedUtxoCount > 0) ...[
-                          const SizedBox(height: 12),
-                          _buildFeeEstimate(walletProvider),
-                        ],
+                        const SizedBox(height: 12),
+                        _buildSendPreview(walletProvider),
 
                         // Error Message
                         if (_errorMessage.isNotEmpty) ...[

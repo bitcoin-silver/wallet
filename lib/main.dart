@@ -109,10 +109,8 @@ Future<void> _bootstrapApp(
   BlockchainProvider bp,
 ) async {
   try {
-    await Future.wait([
-      _configureRpcConnection(wp),
-      wp.loadWallet(),
-    ]);
+    await wp.loadWallet();
+    final rpcReachable = await _configureRpcConnection(wp);
 
     if (wp.address != null) {
       final futures = <Future<void>>[
@@ -120,7 +118,7 @@ Future<void> _bootstrapApp(
       ];
 
       // RPC affects UTXO/balance fetching, but explorer history can still load.
-      if (wp.rpcError == null) {
+      if (rpcReachable) {
         futures.add(wp.fetchUtxos(force: true));
       }
 
@@ -133,11 +131,13 @@ Future<void> _bootstrapApp(
   }
 }
 
-Future<void> _configureRpcConnection(
+Future<bool> _configureRpcConnection(
   WalletProvider wp,
 ) async {
   try {
-    final rpcResponse = await wp.walletService.rpcRequest('getblockchaininfo');
+    final rpcResponse = await wp.walletService
+        .rpcRequest('getblockchaininfo')
+        .timeout(const Duration(seconds: 4));
     final hasValidResult = rpcResponse != null &&
         rpcResponse['error'] == null &&
         rpcResponse['result'] != null;
@@ -146,13 +146,16 @@ Future<void> _configureRpcConnection(
       wp.setRpcError(
         'RPC is unreachable right now. Balance display is affected until connection is restored.',
       );
+      return false;
     } else {
       wp.setRpcError(null);
+      return true;
     }
   } catch (e) {
     wp.setRpcError(
       'RPC is unreachable right now. Balance display is affected until connection is restored.',
     );
+    return false;
   }
 }
 

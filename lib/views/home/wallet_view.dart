@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:bitcoinsilver_wallet/widgets/transaction_widget.dart';
 import 'package:bitcoinsilver_wallet/widgets/skeleton_loader.dart';
 import 'package:bitcoinsilver_wallet/widgets/empty_state.dart';
@@ -29,6 +30,12 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
   late AnimationController _pendingAnimationController;
   late Animation<double> _pendingAnimation;
   Timer? _refreshTimer;
+  bool _isResumeSyncInProgress = false;
+  DateTime? _lastResumeSyncAt;
+  bool _isSyncInProgress = false;
+  bool _syncQueued = false;
+  bool _queuedForce = false;
+  bool _queuedSilent = true;
 
   @override
   void initState() {
@@ -50,7 +57,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
 
     // Optimized periodic refresh (3 minutes instead of 30s to reduce RPC load)
     _refreshTimer = Timer.periodic(const Duration(seconds: 180), (timer) {
-      _syncWalletData(silent: true);
+      _requestWalletSync(silent: true, force: true);
     });
   }
 
@@ -65,28 +72,105 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Refresh immediately when user returns to app
-      _syncWalletData(silent: true);
-
-      // Some providers can briefly fail right after resume while networking
-      // settles; run one follow-up silent sync to avoid stale chart/tx lists.
-      Future.delayed(const Duration(seconds: 2), () {
-        if (!mounted) return;
-        _syncWalletData(silent: true);
-      });
+      _runResumeSync();
     }
   }
 
-  Future<void> _syncWalletData({bool silent = false, bool force = true}) async {
+  Future<void> _runResumeSync() async {
+    if (!mounted || _isResumeSyncInProgress) return;
+
+    final now = DateTime.now();
+    if (_lastResumeSyncAt != null &&
+        now.difference(_lastResumeSyncAt!) < const Duration(seconds: 3)) {
+      return;
+    }
+
+    _isResumeSyncInProgress = true;
+    _lastResumeSyncAt = now;
+    try {
+      if (kDebugMode) {
+        debugPrint('WalletView: resume-triggered sync requested (silent=true, force=true).');
+      }
+      await _requestWalletSync(silent: true, force: true);
+    } catch (_) {
+      // Resume sync failures are handled by providers; keep lifecycle flow stable.
+      if (kDebugMode) {
+        debugPrint('WalletView: resume sync request threw; provider handles downstream errors.');
+      }
+    } finally {
+      _isResumeSyncInProgress = false;
+    }
+  }
+
+  Future<void> _requestWalletSync({bool silent = false, bool force = true}) async {
+    if (_isSyncInProgress) {
+      _syncQueued = true;
+      _queuedForce = _queuedForce || force;
+      _queuedSilent = _queuedSilent && silent;
+      if (kDebugMode) {
+        debugPrint(
+          'WalletView: sync already running, queued request '
+          '(incoming silent=$silent, force=$force -> queued silent=$_queuedSilent, force=$_queuedForce).',
+        );
+      }
+      return;
+    }
+
+    _isSyncInProgress = true;
+    bool nextSilent = silent;
+    bool nextForce = force;
+    if (kDebugMode) {
+      debugPrint('WalletView: starting sync coalescer loop (silent=$nextSilent, force=$nextForce).');
+    }
+
+    try {
+      while (true) {
+        _syncQueued = false;
+        _queuedForce = false;
+        _queuedSilent = true;
+
+        if (kDebugMode) {
+          debugPrint('WalletView: executing wallet sync (silent=$nextSilent, force=$nextForce).');
+        }
+        await _syncWalletDataInternal(silent: nextSilent, force: nextForce);
+
+        if (!_syncQueued) break;
+        if (kDebugMode) {
+          debugPrint(
+            'WalletView: flushing queued sync request '
+            '(silent=$_queuedSilent, force=$_queuedForce).',
+          );
+        }
+        nextForce = _queuedForce;
+        nextSilent = _queuedSilent;
+      }
+    } finally {
+      _isSyncInProgress = false;
+      if (kDebugMode) {
+        debugPrint('WalletView: sync coalescer loop completed.');
+      }
+    }
+  }
+
+  Future<void> _syncWalletDataInternal({bool silent = false, bool force = true}) async {
     final wp = Provider.of<WalletProvider>(context, listen: false);
     final bp = Provider.of<BlockchainProvider>(context, listen: false);
 
-    if (wp.address == null) return;
+    if (wp.address == null) {
+      if (kDebugMode) {
+        debugPrint('WalletView: sync skipped because wallet address is null.');
+      }
+      return;
+    }
 
     await Future.wait([
       wp.fetchUtxos(force: force, silent: silent),
       bp.loadBlockchain(wp.address, silent: silent),
     ]);
+
+    if (kDebugMode) {
+      debugPrint('WalletView: sync completed (silent=$silent, force=$force).');
+    }
   }
 
   Future<void> _onRefresh() async {
@@ -113,7 +197,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
       ),
     );
 
-    await _syncWalletData(silent: false, force: true);
+    await _requestWalletSync(silent: false, force: true);
 
     if (mounted) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
