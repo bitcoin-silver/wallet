@@ -36,7 +36,8 @@ class BlockchainProvider with ChangeNotifier {
       notifyListeners();
     } else {
       // For silent refresh, we reset index to fetch latest page in background
-      _startIndex = 0;
+        _transactions.clear(); // still clear on silent refresh, just skip the loading UI
+        _startIndex = 0;
     }
 
     await fetchTransactions(address, silent: silent);

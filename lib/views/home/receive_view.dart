@@ -471,6 +471,8 @@ class _ReceiveViewState extends State<ReceiveView>
                                   child: Image.asset(
                                     'assets/logo_big.png',
                                     fit: BoxFit.contain,
+                                    cacheHeight: 160,
+                                    cacheWidth: 160,
                                   ),
                                 ),
                               );
@@ -646,6 +648,8 @@ class _ReceiveViewState extends State<ReceiveView>
                                     child: Image.asset(
                                       'assets/logo_big.png',
                                       fit: BoxFit.contain,
+                                      cacheHeight: 100,
+                                      cacheWidth: 100,
                                     ),
                                   ),
                                 ],

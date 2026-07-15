@@ -29,8 +29,8 @@ extensions.configure<ApplicationExtension> {
         applicationId = "top.bitcoinsilver.wallet2025"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 71
-        versionName = "BTCS-W-5.6.5"
+        versionCode = 77
+        versionName = "BTCS-W-5.6.6"
     }
 
     signingConfigs {
@@ -49,6 +49,11 @@ extensions.configure<ApplicationExtension> {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 }
 

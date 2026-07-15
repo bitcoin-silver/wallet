@@ -12,6 +12,7 @@ const String backendUrl = 'https://bitcoinsilver.eu';
 class WalletProvider with ChangeNotifier {
   static const String rpcUnavailableWarning =
       'RPC is unreachable right now. Balance display is affected until connection is restored.';
+  static const bool _enableFeeDebugLogs = false; // Set to true to enable debug logs for fee estimation
 
   // Use default storage (compatible with Play Store signing)
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
@@ -35,8 +36,14 @@ class WalletProvider with ChangeNotifier {
   String? _rpcError; // New field to store RPC connection errors
   String _message = '';
   double _feeRate = 0.00001;
-  bool _feeEstimateAvailable = false;
-  bool _isFeeEstimateLoading = false;
+  bool _isFetchingFeeRate = false;
+  bool _feeRateReady = false;
+  bool _usingManualFeeRate = false;
+  String _feeRateSource = 'unavailable';
+  double? _feeBaselineRate;
+  double? _feeEstimatedRate;
+  double? _feeSanityCeiling;
+  String _feeRateStatusMessage = 'Fee estimate not requested yet.';
   String? _feeEstimateError;
 
   // Advanced send coin-control state
@@ -50,9 +57,19 @@ class WalletProvider with ChangeNotifier {
   String? get rpcError => _rpcError;
   String get message => _message;
   double get feeRate => _feeRate;
-  bool get feeEstimateAvailable => _feeEstimateAvailable;
-  bool get isFeeEstimateLoading => _isFeeEstimateLoading;
-  String? get feeEstimateError => _feeEstimateError;
+  bool get isFetchingFeeRate => _isFetchingFeeRate;
+  bool get feeRateReady => _feeRateReady;
+  bool get usingManualFeeRate => _usingManualFeeRate;
+  String get feeRateSource => _feeRateSource;
+  double? get feeBaselineRate => _feeBaselineRate;
+  double? get feeEstimatedRate => _feeEstimatedRate;
+  double? get feeSanityCeiling => _feeSanityCeiling;
+  String get feeRateStatusMessage => _feeRateStatusMessage;
+
+  // Backward-compatible aliases for existing debug UI paths.
+  bool get feeEstimateAvailable => _feeRateReady;
+  bool get isFeeEstimateLoading => _isFetchingFeeRate;
+  String? get feeEstimateError => _feeRateReady ? null : _feeEstimateError;
 
   List<Map<String, dynamic>> get availableUtxos => _availableUtxos;
   Set<String> get selectedUtxoKeys => _selectedUtxoKeys;
@@ -128,68 +145,100 @@ class WalletProvider with ChangeNotifier {
   }
 
   Future<bool> fetchFeeRate() async {
-    _isFeeEstimateLoading = true;
+    _isFetchingFeeRate = true;
+    _feeRateReady = false;
+    _usingManualFeeRate = false;
+    _feeRateSource = 'fetching';
+    _feeBaselineRate = null;
+    _feeEstimatedRate = null;
+    _feeSanityCeiling = null;
+    _feeRateStatusMessage = 'Fetching fee estimate from node...';
+    _feeEstimateError = null;
     notifyListeners();
 
     try {
-      final feeResult = await _ws.rpcRequest('estimatesmartfee', [6]);
+      final feeResult = await _ws.resolveFeeRate();
 
-      if (feeResult?['error'] != null) {
-        _feeEstimateAvailable = false;
-        _feeEstimateError = feeResult!['error']['message'] as String? ??
-            'Fee estimation failed';
-        return false;
-      }
+      if (feeResult['success'] == true) {
+        _feeRate = (feeResult['feeRate'] as num).toDouble();
+        _feeRateReady = true;
+        _feeRateSource = (feeResult['source'] as String?) ?? 'estimated';
+        _feeBaselineRate = (feeResult['baselineFeeRate'] as num?)?.toDouble();
+        _feeEstimatedRate = (feeResult['estimatedFeeRate'] as num?)?.toDouble();
+        _feeSanityCeiling = (feeResult['sanityCeiling'] as num?)?.toDouble();
 
-      final result = feeResult?['result'];
-      if (result is! Map<String, dynamic>) {
-        _feeEstimateAvailable = false;
-        _feeEstimateError = 'Fee estimation returned an invalid response.';
-        return false;
-      }
-
-      final feerateRaw = result['feerate'];
-      if (feerateRaw is num) {
-        final feerate = feerateRaw.toDouble();
-        if (feerate > 0) {
-          _feeRate = feerate;
-          _feeEstimateAvailable = true;
-          _feeEstimateError = null;
-          _clearRpcUnavailableWarningIfPresent();
-          return true;
+        switch (_feeRateSource) {
+          case 'clamped':
+            if (_enableFeeDebugLogs) {
+              debugPrint(
+                '[fee] clamped estimator -> baseline '
+                'est=${_feeEstimatedRate?.toStringAsFixed(8)} '
+                'base=${_feeBaselineRate?.toStringAsFixed(8)} '
+                'ceil=${_feeSanityCeiling?.toStringAsFixed(8)}',
+              );
+            }
+            _feeRateStatusMessage =
+                (feeResult['message'] as String?) ??
+                'Smart fee outlier detected. Using node baseline fee.';
+            break;
+          case 'baseline':
+            _feeRateStatusMessage =
+                (feeResult['message'] as String?) ?? 'Using node baseline fee.';
+            break;
+          case 'manual':
+            _feeRateStatusMessage =
+                'Using manual fee rate (${_feeRate.toStringAsFixed(8)} BTCS/kvB).';
+            break;
+          case 'estimated':
+          default:
+            _feeRateStatusMessage = 'Fee estimate ready from node.';
+            break;
         }
 
-        if (feerate == -1) {
-          _feeEstimateAvailable = false;
-          final errors = result['errors'];
-          if (errors is List && errors.isNotEmpty) {
-            _feeEstimateError = errors.join(', ');
-          } else {
-            _feeEstimateError =
-                'Node could not estimate a network fee at this time.';
-          }
-          return false;
-        }
+        _feeEstimateError = null;
+        _clearRpcUnavailableWarningIfPresent();
+        return true;
       }
 
-      final errors = result['errors'];
-      _feeEstimateAvailable = false;
-      if (errors is List && errors.isNotEmpty) {
-        _feeEstimateError = errors.join(', ');
-      } else {
-        _feeEstimateError =
-            'No fee rate was returned by the node for this target.';
-      }
+      _feeRate = 0.0;
+      _feeRateReady = false;
+      _feeRateSource = 'unavailable';
+      _feeBaselineRate = null;
+      _feeEstimatedRate = null;
+      _feeSanityCeiling = null;
+      _feeRateStatusMessage =
+          (feeResult['message'] as String?) ?? 'Fee estimation unavailable. Manual fee required.';
+      _feeEstimateError = _feeRateStatusMessage;
       return false;
-    } catch (e) {
-      _feeEstimateAvailable = false;
-      _feeEstimateError = 'RPC fee estimation failed: $e';
+    } catch (_) {
+      _feeRate = 0.0;
+      _feeRateReady = false;
+      _feeRateSource = 'unavailable';
+      _feeBaselineRate = null;
+      _feeEstimatedRate = null;
+      _feeSanityCeiling = null;
+      _feeRateStatusMessage = 'Fee estimation unavailable. Enter a manual fee when sending.';
+      _feeEstimateError = _feeRateStatusMessage;
       _setRpcUnavailableWarning();
       return false;
     } finally {
-      _isFeeEstimateLoading = false;
+      _isFetchingFeeRate = false;
       notifyListeners();
     }
+  }
+
+  void setManualFeeRate(double feeRateCoinPerKb) {
+    _feeRate = feeRateCoinPerKb;
+    _feeRateReady = true;
+    _usingManualFeeRate = true;
+    _feeRateSource = 'manual';
+    _feeBaselineRate = null;
+    _feeEstimatedRate = null;
+    _feeSanityCeiling = null;
+    _feeRateStatusMessage =
+        'Using manual fee rate (${feeRateCoinPerKb.toStringAsFixed(8)} BTCS/kvB).';
+    _feeEstimateError = null;
+    notifyListeners();
   }
 
   Future<void> fetchUtxosForCoinControl() async {
@@ -723,18 +772,23 @@ class WalletProvider with ChangeNotifier {
     }
   }
 
-  Future<bool> _attemptRpcRecovery() async {
-    try {
-      await _ws.rpcRequest('getblockchaininfo');
-      _clearRpcUnavailableWarningIfPresent();
-      return true;
-    } catch (_) {
-      // Recovery failed; report below.
+    Future<bool> _attemptRpcRecovery() async {
+      for (final delay in [
+        const Duration(milliseconds: 500),
+        const Duration(seconds: 1, milliseconds: 500),
+      ]) {
+        await Future.delayed(delay);
+        try {
+          await _ws.rpcRequest('getblockchaininfo');
+          _clearRpcUnavailableWarningIfPresent();
+          return true;
+        } catch (_) {
+          // try next delay
+        }
+      }
+      _setRpcUnavailableWarning();
+      return false;
     }
-
-    _setRpcUnavailableWarning();
-    return false;
-  }
 
     Future<Map<String, dynamic>> sendTransaction(
       String address,
@@ -987,17 +1041,58 @@ class WalletProvider with ChangeNotifier {
       }
 
       if (currentBalance > 0.00001) {
-        // Ensure migration sweep uses a known fee rate and does not depend on a
-        // second smart-fee lookup during send.
-        if (!_feeEstimateAvailable) {
-          final feeReady = await fetchFeeRate();
-          if (!feeReady) {
-            _lastError = 'Migration failed: ${_feeEstimateError ?? 'Network fee estimate unavailable'}';
-            _message = '❌ Migration failed: ${_feeEstimateError ?? 'Network fee estimate unavailable'}';
-            _isLoading = false;
-            notifyListeners();
-            return false;
-          }
+        final migrationUtxos = _utxos
+            .where((u) =>
+                u['txid'] != 'pending_marker' &&
+                (u['confirmations'] as int? ?? 0) > 0)
+            .map((u) => Map<String, dynamic>.from(u as Map))
+            .toList();
+        if (migrationUtxos.isEmpty) {
+          _lastError = 'Migration failed: no confirmed UTXOs available to sweep.';
+          _message = '❌ Migration failed: no confirmed UTXOs available to sweep.';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+
+        // Resolve fee once and pass it explicitly to sweep send for deterministic behavior.
+        final migrationFeeResolution = await _ws.resolveFeeRate();
+        if (migrationFeeResolution['success'] != true) {
+          final reason = (migrationFeeResolution['message'] as String?) ??
+              'Could not establish a safe fee rate.';
+          _lastError = 'Migration failed: $reason';
+          _message = '❌ Migration failed: $reason';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+
+        final migrationFeeRate =
+            (migrationFeeResolution['feeRate'] as num).toDouble();
+        _feeRate = migrationFeeRate;
+        _feeRateReady = true;
+        _usingManualFeeRate = (migrationFeeResolution['source'] as String?) == 'manual';
+        _feeRateSource = (migrationFeeResolution['source'] as String?) ?? 'estimated';
+        _feeBaselineRate =
+            (migrationFeeResolution['baselineFeeRate'] as num?)?.toDouble();
+        _feeEstimatedRate =
+            (migrationFeeResolution['estimatedFeeRate'] as num?)?.toDouble();
+        _feeSanityCeiling =
+            (migrationFeeResolution['sanityCeiling'] as num?)?.toDouble();
+
+        final estimatedSweepVbytes = 11 + (migrationUtxos.length * 68) + 31;
+        final estimatedFee =
+            double.parse((migrationFeeRate * estimatedSweepVbytes / 1000).toStringAsFixed(8));
+        if (currentBalance <= estimatedFee + 0.00000546) {
+          _lastError =
+              'Migration failed: insufficient balance after fees. '
+              'Estimated fee is ${estimatedFee.toStringAsFixed(8)} BTCS.';
+          _message =
+              '❌ Migration failed: insufficient balance after fees. '
+              'Estimated fee is ${estimatedFee.toStringAsFixed(8)} BTCS.';
+          _isLoading = false;
+          notifyListeners();
+          return false;
         }
 
         // 2. Sweep funds
@@ -1006,8 +1101,9 @@ class WalletProvider with ChangeNotifier {
         final result = await sendTransaction(
           newAddress,
           currentBalance,
-          feeRate: _feeRate,
+          feeRate: migrationFeeRate,
           isSweep: true,
+          preSelectedUtxos: migrationUtxos,
         );
 
         if (!result['success']) {

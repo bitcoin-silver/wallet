@@ -35,7 +35,7 @@ class ChatNotificationService {
       );
 
       await _notificationsPlugin.initialize(
-        initSettings,
+        settings: initSettings,
         onDidReceiveNotificationResponse: _onNotificationTapped,
       );
 
@@ -98,10 +98,10 @@ class ChatNotificationService {
           : '$username: $message';
 
       await _notificationsPlugin.show(
-        0, // notification ID (using 0 to replace previous chat notification)
-        title,
-        body,
-        notificationDetails,
+        id: 0, // notification ID (using 0 to replace previous chat notification)
+        title: title,
+        body: body,
+        notificationDetails: notificationDetails,
         payload: 'chat_message', // Payload to identify chat notifications
       );
 
@@ -114,7 +114,7 @@ class ChatNotificationService {
   /// Clear all chat notifications
   Future<void> clearNotifications() async {
     try {
-      await _notificationsPlugin.cancel(0); // Cancel chat notification
+      await _notificationsPlugin.cancel(id: 0); // Cancel chat notification
       debugPrint('🔕 Chat notifications cleared');
     } catch (error) {
       debugPrint('❌ Error clearing notifications: $error');

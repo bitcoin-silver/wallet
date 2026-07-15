@@ -31,7 +31,12 @@
 - **Biometric Security**: Protect your wallet and recovery phrase with fingerprint or face recognition.
 - **Secure Storage**: Sensitive keys and mnemonics are stored in encrypted secure storage.
 
-## Recent Updates
+### Latest Updates
+
+- Refined Send fee UX with a clearer fee source selector (`Manual` vs `Auto (Node Fee)`) and active-state highlighting.
+- Simplified estimated fee card layout with clearer grouping: estimated fee, fee source, fee rate, and net send after fee (advanced input-selected mode).
+- Improved simple mode fee estimation to be amount-aware using confirmed UTXOs, producing more realistic estimates than a fixed baseline example.
+- Kept advanced mode fee behavior input-aware from selected UTXOs (coin control), so detailed estimates remain tied to selected inputs.
 
 - Upgraded to Flutter 3.44.4 • channel stable
 - Upgraded to Android Gradle Plugin (AGP) 9.6.0
@@ -58,8 +63,8 @@
 - Manual Fee UX Improvements:
   - Unit toggle for `sat/vB` and `BTCS/kvB` with conversion.
   - Network-condition presets tuned to current conditions:
-    - Low: `0.085 BTCS/kvB`
-    - High: `0.10 BTCS/kvB`
+    - Low: `0.00000226 BTCS/kvB`
+    - High: `0.0004 BTCS/kvB`
 - Resume/Background Reliability:
   - Improved silent transaction refresh behavior so latest transactions are reloaded after app resume/background transitions.
   - Added shared wallet sync coalescing for timer/resume/manual refresh to avoid overlapping sync races.

@@ -31,6 +31,31 @@ class _SendViewState extends State<SendView> {
 
   int _btcsToSats(double amount) => (amount * _satsPerBtcs).round();
   double _satsToBtcs(int sats) => sats / _satsPerBtcs;
+  double _btcsKvBToSatVb(double btcsKvB) => btcsKvB / 0.00001;
+
+  String _formatDecimal(double value, {int maxDecimals = 8}) {
+    final fixed = value.toStringAsFixed(maxDecimals);
+    final trimmed = fixed.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+    return trimmed.isEmpty ? '0' : trimmed;
+  }
+
+  String _formatSatVb(double btcsKvB) =>
+      _formatDecimal(_btcsKvBToSatVb(btcsKvB), maxDecimals: 6);
+
+  String _feeSourceLabel(WalletProvider provider) {
+    switch (provider.feeRateSource) {
+      case 'manual':
+        return 'Manual';
+      case 'clamped':
+        return 'Clamped to Baseline';
+      case 'baseline':
+        return 'Node Baseline';
+      case 'estimated':
+        return 'Node Estimate';
+      default:
+        return 'Not Ready';
+    }
+  }
 
   int _selectedUtxoTotalSats(WalletProvider provider) {
     return provider.selectedUtxoList.fold(
@@ -173,12 +198,18 @@ class _SendViewState extends State<SendView> {
       ? walletProvider.selectedUtxoList
       : null;
 
-    final bool initialFeeEstablishedByEstimator = walletProvider.feeEstimateAvailable;
     double? sendFeeRate;
 
-    if (initialFeeEstablishedByEstimator) {
+    if (walletProvider.feeRateReady) {
       sendFeeRate = walletProvider.feeRate;
     } else {
+      await walletProvider.fetchFeeRate();
+      if (walletProvider.feeRateReady) {
+        sendFeeRate = walletProvider.feeRate;
+      }
+    }
+
+    if (sendFeeRate == null) {
       final manualFeeRate = await _showManualFeeDialog(walletProvider);
       if (manualFeeRate == null) {
         if (mounted) {
@@ -189,7 +220,23 @@ class _SendViewState extends State<SendView> {
         }
         return;
       }
+      walletProvider.setManualFeeRate(manualFeeRate);
       sendFeeRate = manualFeeRate;
+    }
+
+    final agreed = await _showPreSendConfirmDialog(
+      provider: walletProvider,
+      toAddress: address,
+      amount: amount,
+    );
+    if (!agreed) {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+          _errorMessage = 'Transaction cancelled.';
+        });
+      }
+      return;
     }
 
     try {
@@ -204,7 +251,11 @@ class _SendViewState extends State<SendView> {
       if (result['success'] == true) {
         // Success!
         if (mounted) {
-          _showSuccessDialog(result['txid'] ?? '', result['fee'] ?? 0.0);
+          await _showPostSendAckDialog(
+            txid: result['txid'] ?? '',
+            amount: amount,
+            fee: (result['fee'] as num?)?.toDouble() ?? 0.0,
+          );
         }
 
         // Clear form
@@ -237,7 +288,7 @@ class _SendViewState extends State<SendView> {
       }
 
       // Handle insufficient fee error
-      if (initialFeeEstablishedByEstimator && result['suggestedFeeRate'] != null) {
+      if (result['suggestedFeeRate'] != null) {
         final suggestedFeeRate = (result['suggestedFeeRate'] as num).toDouble();
         final currentFeeRate = (result['currentFeeRate'] as num?)?.toDouble() ?? 0.00001;
 
@@ -259,7 +310,11 @@ class _SendViewState extends State<SendView> {
 
             if (retryResult['success'] == true) {
               if (mounted) {
-                _showSuccessDialog(retryResult['txid'] ?? '', retryResult['fee'] ?? 0.0);
+                await _showPostSendAckDialog(
+                  txid: retryResult['txid'] ?? '',
+                  amount: amount,
+                  fee: (retryResult['fee'] as num?)?.toDouble() ?? 0.0,
+                );
               }
 
               // Clear form
@@ -329,12 +384,12 @@ class _SendViewState extends State<SendView> {
   Future<double?> _showManualFeeDialog(WalletProvider provider) async {
     bool useSatVb = true;
 
-    final lowBtcsKvB = 0.085;
-    final highBtcsKvB = 0.10;
+    const lowBtcsKvB = 0.00000226;
+    const highBtcsKvB = 0.0004;
     final lowSatVb = lowBtcsKvB / 0.00001;
     final highSatVb = highBtcsKvB / 0.00001;
 
-    _manualFeeController.text = lowSatVb.toStringAsFixed(2);
+    _manualFeeController.text = _formatDecimal(lowSatVb, maxDecimals: 4);
 
     final feeRate = await showDialog<double>(
       context: context,
@@ -346,7 +401,7 @@ class _SendViewState extends State<SendView> {
           builder: (context, setDialogState) {
             return AlertDialog(
               backgroundColor: const Color.fromARGB(255, 25, 25, 25),
-              title: const Text('Manual Network Fee Required', style: TextStyle(color: Colors.white)),
+              title: const Text('Manual Network Fee', style: TextStyle(color: Colors.white)),
               content: ConstrainedBox(
                 constraints: BoxConstraints(
                   maxHeight: MediaQuery.of(context).size.height * 0.65,
@@ -363,7 +418,7 @@ class _SendViewState extends State<SendView> {
                       Expanded(
                         child: Text(
                           provider.feeEstimateError ??
-                              'Automatic fee estimation is currently unavailable.',
+                              'A too low fee may result in the transaction being rejected by the network.',
                           style: const TextStyle(color: Colors.white70),
                         ),
                       ),
@@ -386,12 +441,12 @@ class _SendViewState extends State<SendView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Low traffic: $lowSatVb sat/vB (${lowBtcsKvB.toStringAsFixed(8)} BTCS/kvB), slower confirmation',
+                          'Low traffic: ${_formatDecimal(lowSatVb, maxDecimals: 4)} sat/vB (${lowBtcsKvB.toStringAsFixed(8)} BTCS/kvB), slower confirmation',
                           style: const TextStyle(color: Colors.white60, fontSize: 12),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'High traffic: $highSatVb sat/vB (${highBtcsKvB.toStringAsFixed(8)} BTCS/kvB), faster confirmation',
+                          'High traffic: ${_formatDecimal(highSatVb, maxDecimals: 4)} sat/vB (${highBtcsKvB.toStringAsFixed(8)} BTCS/kvB), faster confirmation',
                           style: const TextStyle(color: Colors.white60, fontSize: 12),
                         ),
                       ],
@@ -415,8 +470,8 @@ class _SendViewState extends State<SendView> {
                             ? parsed / 0.00001
                             : _satVbToBtcsKvB(parsed);
                         _manualFeeController.text = next
-                            ? converted.toStringAsFixed(2)
-                            : converted.toStringAsFixed(8);
+                          ? _formatDecimal(converted, maxDecimals: 4)
+                          : converted.toStringAsFixed(8);
                       }
 
                       setDialogState(() {
@@ -456,7 +511,7 @@ class _SendViewState extends State<SendView> {
                       TextButton(
                         onPressed: () {
                           _manualFeeController.text = useSatVb
-                              ? lowSatVb.toStringAsFixed(2)
+                              ? _formatDecimal(lowSatVb, maxDecimals: 4)
                               : lowBtcsKvB.toStringAsFixed(8);
                           setDialogState(() {
                             validationError = null;
@@ -467,7 +522,7 @@ class _SendViewState extends State<SendView> {
                       TextButton(
                         onPressed: () {
                           _manualFeeController.text = useSatVb
-                              ? highSatVb.toStringAsFixed(2)
+                              ? _formatDecimal(highSatVb, maxDecimals: 4)
                               : highBtcsKvB.toStringAsFixed(8);
                           setDialogState(() {
                             validationError = null;
@@ -549,6 +604,97 @@ class _SendViewState extends State<SendView> {
     if (!_advancedSend) return;
     final total = _satsToBtcs(_selectedUtxoTotalSats(provider));
     _amountController.text = total > 0 ? total.toStringAsFixed(8) : '';
+  }
+
+  ({double fee, int? inputCount, bool amountAware}) _estimateSimpleModeFee(
+    WalletProvider provider,
+  ) {
+    final feeRate = provider.feeRate;
+    if (feeRate <= 0) {
+      return (fee: 0.0, inputCount: null, amountAware: false);
+    }
+
+    final confirmedUtxos = (provider.utxos ?? const [])
+        .whereType<Map>()
+        .where((u) {
+          final txid = u['txid'];
+          final confirmations = u['confirmations'] as int? ?? 0;
+          return txid != 'pending_marker' && confirmations > 0;
+        })
+        .map((u) => (u['amount'] as num?)?.toDouble() ?? 0.0)
+        .where((a) => a > 0)
+        .toList()
+      ..sort((a, b) => b.compareTo(a));
+
+    final enteredAmount = double.tryParse(_amountController.text.trim());
+    final hasAmount = enteredAmount != null && enteredAmount > 0;
+
+    int txSizeForInputs(int inputs) => 11 + (inputs * 68) + 31 + 31;
+    double feeForInputs(int inputs) =>
+        double.parse((feeRate * txSizeForInputs(inputs) / 1000).toStringAsFixed(8));
+
+    if (!hasAmount || confirmedUtxos.isEmpty) {
+      final fallbackInputs = confirmedUtxos.isEmpty
+          ? 2
+          : (confirmedUtxos.length >= 2 ? 2 : 1);
+      return (
+        fee: feeForInputs(fallbackInputs),
+        inputCount: fallbackInputs,
+        amountAware: false,
+      );
+    }
+
+    int inputsNeededFor(double requiredTotal) {
+      double total = 0.0;
+      int used = 0;
+      for (final amount in confirmedUtxos) {
+        total += amount;
+        used += 1;
+        if (total >= requiredTotal) {
+          return used;
+        }
+      }
+      return -1;
+    }
+
+    var guessInputs = 1;
+    for (var i = 0; i < 8; i++) {
+      final fee = feeForInputs(guessInputs);
+      final needed = inputsNeededFor(enteredAmount + fee);
+
+      if (needed <= 0) {
+        final fallbackInputs = confirmedUtxos.length >= 2 ? 2 : 1;
+        return (
+          fee: feeForInputs(fallbackInputs),
+          inputCount: fallbackInputs,
+          amountAware: false,
+        );
+      }
+
+      if (needed == guessInputs) {
+        return (fee: fee, inputCount: guessInputs, amountAware: true);
+      }
+
+      guessInputs = needed;
+    }
+
+    return (
+      fee: feeForInputs(guessInputs),
+      inputCount: guessInputs,
+      amountAware: true,
+    );
+  }
+
+  ({double fee, bool hasExactCoinControlFee, ({double fee, int? inputCount, bool amountAware}) simpleEstimate})
+      _currentDisplayedFee(WalletProvider provider) {
+    final hasExactCoinControlFee = _advancedSend && provider.selectedUtxoCount > 0;
+    final simpleEstimate = _estimateSimpleModeFee(provider);
+    final fee = hasExactCoinControlFee ? provider.estimatedFee : simpleEstimate.fee;
+    return (
+      fee: fee,
+      hasExactCoinControlFee: hasExactCoinControlFee,
+      simpleEstimate: simpleEstimate,
+    );
   }
 
   Widget _buildUtxoSelector(WalletProvider provider) {
@@ -673,23 +819,38 @@ class _SendViewState extends State<SendView> {
     );
   }
 
-  Widget _buildFeeEstimate(WalletProvider provider) {
-    final hasExactCoinControlFee = _advancedSend && provider.selectedUtxoCount > 0;
-    final fee = hasExactCoinControlFee
-        ? provider.estimatedFee
-        : provider.estimatedSimpleFee;
-    final net = provider.estimatedNetSend;
+  Widget _buildFeeEstimate(
+    WalletProvider provider,
+    ({double fee, bool hasExactCoinControlFee, ({double fee, int? inputCount, bool amountAware}) simpleEstimate})
+        feeSnapshot,
+  ) {
+    final hasExactCoinControlFee = feeSnapshot.hasExactCoinControlFee;
+    final simpleEstimate = feeSnapshot.simpleEstimate;
+    final fee = feeSnapshot.fee;
     final detailsLabel = hasExactCoinControlFee
         ? 'Size-aware estimate for ${provider.selectedUtxoCount} selected input(s)'
         : _advancedSend
             ? 'Typical fee fallback until inputs are selected'
-            : 'Typical fee estimate for a standard transaction';
+        : simpleEstimate.amountAware
+          ? 'Amount-aware estimate using ~${simpleEstimate.inputCount ?? 1} input(s)'
+          : 'Simple mode estimate using ~${simpleEstimate.inputCount ?? 2} input(s)';
     final detailsColor = hasExactCoinControlFee
       ? Colors.greenAccent
       : _advancedSend
         ? Colors.amberAccent
+      : simpleEstimate.amountAware
+        ? Colors.white70
         : Colors.white54;
     if (fee <= 0) return const SizedBox.shrink();
+
+    final sourceText = _feeSourceLabel(provider);
+    final sourceColor = _feeSourceColor(provider);
+    final rateColor = sourceColor.withValues(alpha: 0.85);
+    final rateText =
+        '${provider.feeRate.toStringAsFixed(8)} BTCS/kvB (${_formatSatVb(provider.feeRate)} sat/vB)';
+    final netAfterFeeText = provider.estimatedNetSend > 0
+        ? '${provider.estimatedNetSend.toStringAsFixed(8)} BTCS'
+        : '-';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -701,21 +862,75 @@ class _SendViewState extends State<SendView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text(
+            'Estimated Network Fee',
+            style: TextStyle(color: Colors.white70, fontSize: 11),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${fee.toStringAsFixed(8)} BTCS',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Divider(height: 1, color: Colors.white12),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Estimated fee: ${fee.toStringAsFixed(8)} BTCS',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              const Text(
+                'Fee Source',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
               ),
-              if (hasExactCoinControlFee)
-                Text(
-                  net > 0 ? 'Net: ${net.toStringAsFixed(8)}' : 'Net: -',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+              Text(
+                sourceText,
+                style: TextStyle(
+                  color: sourceColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
+              ),
             ],
           ),
           const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Fee Rate',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              Expanded(
+                child: Text(
+                  rateText,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(color: rateColor, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          if (hasExactCoinControlFee) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Net Send After Fee',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                Text(
+                  netAfterFeeText,
+                  style: const TextStyle(color: Colors.greenAccent, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 8),
+          const Divider(height: 1, color: Colors.white12),
+          const SizedBox(height: 8),
           Text(
             detailsLabel,
             style: TextStyle(color: detailsColor, fontSize: 11),
@@ -725,12 +940,115 @@ class _SendViewState extends State<SendView> {
     );
   }
 
-  Widget _buildSendPreview(WalletProvider provider) {
+  bool _isNodeFeeSource(WalletProvider provider) {
+    return provider.feeRateReady &&
+        (provider.feeRateSource == 'estimated' ||
+            provider.feeRateSource == 'baseline' ||
+            provider.feeRateSource == 'clamped');
+  }
+
+  Color _feeSourceColor(WalletProvider provider) {
+    if (provider.feeRateSource == 'manual') {
+      return Colors.cyanAccent;
+    }
+    if (_isNodeFeeSource(provider)) {
+      return Colors.greenAccent;
+    }
+    return Colors.amberAccent;
+  }
+
+  Widget _buildFeeSourceSelector(WalletProvider provider) {
+    final manualSelected = provider.feeRateSource == 'manual';
+    final nodeSelected = _isNodeFeeSource(provider);
+    final currentColor = _feeSourceColor(provider);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Fee Source',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+              Text(
+                _feeSourceLabel(provider),
+                style: TextStyle(color: currentColor, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _isSending
+                      ? null
+                      : () async {
+                          final manualFeeRate = await _showManualFeeDialog(provider);
+                          if (manualFeeRate != null) {
+                            provider.setManualFeeRate(manualFeeRate);
+                          }
+                        },
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: manualSelected ? Colors.cyanAccent : Colors.white30,
+                      width: manualSelected ? 1.6 : 1.0,
+                    ),
+                    backgroundColor: manualSelected
+                        ? Colors.cyanAccent.withValues(alpha: 0.16)
+                        : Colors.transparent,
+                    foregroundColor: manualSelected ? Colors.cyanAccent : Colors.white70,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: const Text('Manual'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _isSending || provider.isFeeEstimateLoading
+                      ? null
+                      : () => provider.fetchFeeRate(),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: nodeSelected ? Colors.greenAccent : Colors.white30,
+                      width: nodeSelected ? 1.6 : 1.0,
+                    ),
+                    backgroundColor: nodeSelected
+                        ? Colors.greenAccent.withValues(alpha: 0.14)
+                        : Colors.transparent,
+                    foregroundColor: nodeSelected ? Colors.greenAccent : Colors.white70,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: const Text('Auto (Node Fee)'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSendPreview(
+    WalletProvider provider,
+    ({double fee, bool hasExactCoinControlFee, ({double fee, int? inputCount, bool amountAware}) simpleEstimate})
+        feeSnapshot,
+  ) {
     final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
     if (amount <= 0) return const SizedBox.shrink();
 
-    final hasSelectedInputs = _advancedSend && provider.selectedUtxoCount > 0;
-    final fee = hasSelectedInputs ? provider.estimatedFee : provider.estimatedSimpleFee;
+    final hasSelectedInputs = feeSnapshot.hasExactCoinControlFee;
+    final fee = feeSnapshot.fee;
 
     final selectedInputsSats = hasSelectedInputs ? _selectedUtxoTotalSats(provider) : 0;
     final autoSpendableSats = _btcsToSats(provider.balance ?? 0.0);
@@ -784,7 +1102,29 @@ class _SendViewState extends State<SendView> {
             children: [
               const Text('Estimated Fee', style: TextStyle(color: Colors.white60, fontSize: 12)),
               Text(
-                '${_satsToBtcs(feeSats).toStringAsFixed(8)} BTCS',
+                '${fee.toStringAsFixed(8)} BTCS',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Fee Source', style: TextStyle(color: Colors.white60, fontSize: 12)),
+              Text(
+                _feeSourceLabel(provider),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Fee Rate', style: TextStyle(color: Colors.white60, fontSize: 12)),
+              Text(
+                '${provider.feeRate.toStringAsFixed(8)} BTCS/kvB (${_formatSatVb(provider.feeRate)} sat/vB)',
                 style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
             ],
@@ -863,57 +1203,156 @@ class _SendViewState extends State<SendView> {
     ) ?? false;
   }
 
-  void _showSuccessDialog(String txid, double fee) {
-    showDialog(
+  Future<bool> _showPreSendConfirmDialog({
+    required WalletProvider provider,
+    required String toAddress,
+    required double amount,
+  }) async {
+    final hasSelectedInputs = _advancedSend && provider.selectedUtxoCount > 0;
+    final simpleEstimate = _estimateSimpleModeFee(provider);
+    final estimatedFee = hasSelectedInputs ? provider.estimatedFee : simpleEstimate.fee;
+
+    final agreed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) {
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+          title: const Text('Confirm Transaction', style: TextStyle(color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('To: $toAddress', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              const SizedBox(height: 8),
+              Text('Amount: ${amount.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 4),
+              Text('Estimated fee: ${estimatedFee.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 4),
+              Text('Fee source: ${_feeSourceLabel(provider)}', style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 4),
+              Text(
+                'Fee rate: ${provider.feeRate.toStringAsFixed(8)} BTCS/kvB (${_formatSatVb(provider.feeRate)} sat/vB)',
+                style: const TextStyle(color: Colors.white70),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Agree & Send'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return agreed ?? false;
+  }
+
+  Future<void> _showPostSendAckDialog({
+    required String txid,
+    required double amount,
+    required double fee,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
         return AlertDialog(
           backgroundColor: const Color.fromARGB(255, 25, 25, 25),
           title: const Row(
             children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 28),
+              Icon(Icons.check_circle, color: Colors.greenAccent, size: 24),
               SizedBox(width: 8),
-              Text('Transaction Sent!', style: TextStyle(color: Colors.white)),
+              Text('Transaction Sent', style: TextStyle(color: Colors.white)),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Your transaction has been broadcast to the network.',
-                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              if (txid.isNotEmpty) ...[
-                const Text('Transaction ID:', style: TextStyle(color: Colors.white60, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                SelectableText(
-                  txid,
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.cyanAccent),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.withValues(alpha: 0.35)),
                 ),
-                const SizedBox(height: 16),
-              ],
-              Text('Network fee: ${fee.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.white60)),
-              const SizedBox(height: 8),
-              const Text(
-                'Please wait for network confirmations.',
-                style: TextStyle(fontStyle: FontStyle.italic, color: Colors.white54),
+                child: const Text(
+                  'Broadcasted to network',
+                  style: TextStyle(
+                    color: Colors.greenAccent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Amount Sent', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                  Text(
+                    '${amount.toStringAsFixed(8)} BTCS',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Network Fee Paid', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                  Text(
+                    '${fee.toStringAsFixed(8)} BTCS',
+                    style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              if (txid.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text('TXID', style: TextStyle(color: Colors.white60, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: SelectableText(
+                    txid,
+                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.cyanAccent),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: txid));
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(content: Text('TXID copied')),
+                      );
+                    },
+                    icon: const Icon(Icons.copy, size: 16),
+                    label: const Text('Copy TXID'),
+                  ),
+                ),
+              ],
             ],
           ),
           actions: [
             ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).pop(); // Go back to home
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.cyanAccent,
-                foregroundColor: Colors.black,
-              ),
-              child: const Text('OK'),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Acknowledge'),
             ),
           ],
         );
@@ -952,6 +1391,7 @@ class _SendViewState extends State<SendView> {
         child: Consumer<WalletProvider>(
           builder: (context, walletProvider, child) {
             final amountErr = _amountError(walletProvider);
+            final feeSnapshot = _currentDisplayedFee(walletProvider);
             return Stack(
               children: [
                 SingleChildScrollView(
@@ -1199,6 +1639,9 @@ class _SendViewState extends State<SendView> {
                                 },
                                 enabled: !_isSending,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,8}$')),
+                                ],
                                 decoration: InputDecoration(
                                   labelText: 'Amount (BTCS)',
                                   errorText: amountErr,
@@ -1235,8 +1678,12 @@ class _SendViewState extends State<SendView> {
                         ),
 
                         const SizedBox(height: 10),
-                        _buildFeeEstimate(walletProvider),
+                        _buildFeeSourceSelector(walletProvider),
 
+                        const SizedBox(height: 10),
+                        _buildFeeEstimate(walletProvider, feeSnapshot),
+
+                        const SizedBox(height: 8),
                         if (walletProvider.isFeeEstimateLoading)
                           const Padding(
                             padding: EdgeInsets.only(top: 4, left: 4),
@@ -1260,7 +1707,7 @@ class _SendViewState extends State<SendView> {
                           ),
                         if (!walletProvider.isFeeEstimateLoading &&
                             !walletProvider.feeEstimateAvailable)
-                          const Padding(
+                          Padding(
                             padding: EdgeInsets.only(top: 4, left: 4),
                             child: Row(
                               children: [
@@ -1272,7 +1719,7 @@ class _SendViewState extends State<SendView> {
                                 SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
-                                    'Automatic fee estimate unavailable. You will be asked to enter low/high manual fee on send.',
+                                    walletProvider.feeRateStatusMessage,
                                     style: TextStyle(fontSize: 11, color: Colors.amberAccent),
                                   ),
                                 ),
@@ -1286,7 +1733,7 @@ class _SendViewState extends State<SendView> {
                         ],
 
                         const SizedBox(height: 12),
-                        _buildSendPreview(walletProvider),
+                        _buildSendPreview(walletProvider, feeSnapshot),
 
                         // Error Message
                         if (_errorMessage.isNotEmpty) ...[
@@ -1317,7 +1764,7 @@ class _SendViewState extends State<SendView> {
 
                         // Information Text
                         const Text(
-                          'To send Bitcoin Silver, enter the recipient\'s bs1 address and the amount. Ensure you have enough balance to cover the transaction fee.',
+                          'To send Bitcoin Silver, enter the recipient\'s bs1 or legacy address and the amount. Ensure you have enough balance to cover the transaction fee.',
                           style: TextStyle(color: Colors.white54),
                         ),
 

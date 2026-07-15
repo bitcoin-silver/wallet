@@ -42,8 +42,10 @@ void main() async {
   // Add basic system UI customization
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      systemNavigationBarColor: Colors.transparent,
+      // The colors are removed to avoid deprecated API calls in Android 15+.
+      // Edge-to-edge is handled by the native side and SystemUiMode.edgeToEdge.
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
 

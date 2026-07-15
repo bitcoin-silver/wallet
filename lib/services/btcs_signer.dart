@@ -72,7 +72,7 @@ class BTCSSigner {
 
       final Uint8List txHash = _doubleSha256(preimage);
       final Uint8List rawSig = node.sign(txHash);
-      final Uint8List derSig = _encodeDer(rawSig);
+      final Uint8List derSig = _normalizeToDer(rawSig);
 
       final Uint8List sigWithHashType = Uint8List(derSig.length + 1);
       sigWithHashType.setRange(0, derSig.length, derSig);
@@ -163,15 +163,7 @@ class BTCSSigner {
     builder.writeBytes(input.txidLittleEndian);
     builder.writeUint32(input.vout);
 
-    final Uint8List pubKeyHash = input.scriptPubKey.sublist(2);
-    final scriptCodeBuilder = _BytesBuilder();
-    scriptCodeBuilder.writeByte(0x76);
-    scriptCodeBuilder.writeByte(0xa9);
-    scriptCodeBuilder.writeByte(pubKeyHash.length);
-    scriptCodeBuilder.writeBytes(pubKeyHash);
-    scriptCodeBuilder.writeByte(0x88);
-    scriptCodeBuilder.writeByte(0xac);
-    final Uint8List scriptCode = scriptCodeBuilder.toBytes();
+    final Uint8List scriptCode = _scriptCodeFromUtxoScript(input.scriptPubKey);
 
     builder.writeVarInt(scriptCode.length);
     builder.writeBytes(scriptCode);
@@ -250,6 +242,19 @@ class BTCSSigner {
     return builder.toBytes();
   }
 
+  static Uint8List _normalizeToDer(Uint8List signature) {
+    // Some runtimes return compact 64-byte signatures (r||s), others return DER.
+    if (signature.length == 64) {
+      return _encodeDer(signature);
+    }
+
+    if (signature.length > 8 && signature[0] == 0x30) {
+      return signature;
+    }
+
+    throw Exception('Unexpected signature format (length=${signature.length}).');
+  }
+
   static Uint8List _minimalEncoding(Uint8List bytes) {
     int start = 0;
     while (start < bytes.length - 1 && bytes[start] == 0) {
@@ -296,6 +301,37 @@ class BTCSSigner {
   static Uint8List _doubleSha256(Uint8List data) {
     final pass1 = sha256.convert(data).bytes;
     return Uint8List.fromList(sha256.convert(pass1).bytes);
+  }
+
+  static Uint8List _scriptCodeFromUtxoScript(Uint8List scriptPubKey) {
+    // Native SegWit P2WPKH scriptPubKey: 0x00 0x14 <20-byte-hash>
+    if (scriptPubKey.length == 22 &&
+        scriptPubKey[0] == 0x00 &&
+        scriptPubKey[1] == 0x14) {
+      final pubKeyHash = scriptPubKey.sublist(2);
+      final builder = _BytesBuilder();
+      builder.writeByte(0x76);
+      builder.writeByte(0xa9);
+      builder.writeByte(pubKeyHash.length);
+      builder.writeBytes(pubKeyHash);
+      builder.writeByte(0x88);
+      builder.writeByte(0xac);
+      return builder.toBytes();
+    }
+
+    // Legacy P2PKH scriptPubKey: OP_DUP OP_HASH160 PUSH20 <20-byte-hash> OP_EQUALVERIFY OP_CHECKSIG
+    if (scriptPubKey.length == 25 &&
+        scriptPubKey[0] == 0x76 &&
+        scriptPubKey[1] == 0xa9 &&
+        scriptPubKey[2] == 0x14 &&
+        scriptPubKey[23] == 0x88 &&
+        scriptPubKey[24] == 0xac) {
+      return scriptPubKey;
+    }
+
+    throw Exception(
+      'Unsupported or malformed input scriptPubKey (len=${scriptPubKey.length}).',
+    );
   }
 
   static Uint8List _convertBits(

@@ -414,6 +414,7 @@ class SetupView extends StatelessWidget {
               child: Image.asset(
                 'assets/background.jpg',
                 fit: BoxFit.cover,
+                cacheWidth: 1000, // Downsample background for memory efficiency
               ),
             ),
             LayoutBuilder(

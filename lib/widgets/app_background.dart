@@ -36,7 +36,10 @@ class AppBackground extends StatelessWidget {
         // Show the image by default (when showGradient is false)
         image: !showGradient
             ? DecorationImage(
-          image: const AssetImage("assets/background.jpg"),
+          image: const ResizeImage(
+            AssetImage("assets/background.jpg"),
+            width: 1000, // Downsample large background for memory efficiency
+          ),
           fit: BoxFit.cover,
           colorFilter: enableSilverAccent
               ? ColorFilter.mode(

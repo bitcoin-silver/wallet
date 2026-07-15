@@ -17,6 +17,7 @@ import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 import 'package:bitcoinsilver_wallet/modals/transaction_modal.dart';
 import 'package:bitcoinsilver_wallet/views/home/transactions_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/app_background.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class WalletView extends StatefulWidget {
   const WalletView({super.key});
@@ -76,31 +77,47 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
     }
   }
 
-  Future<void> _runResumeSync() async {
-    if (!mounted || _isResumeSyncInProgress) return;
+    Future<void> _runResumeSync() async {
+      if (!mounted || _isResumeSyncInProgress) return;
 
-    final now = DateTime.now();
-    if (_lastResumeSyncAt != null &&
-        now.difference(_lastResumeSyncAt!) < const Duration(seconds: 3)) {
-      return;
+      final now = DateTime.now();
+      if (_lastResumeSyncAt != null &&
+          now.difference(_lastResumeSyncAt!) < const Duration(seconds: 3)) {
+        return;
+      }
+
+      _isResumeSyncInProgress = true;
+      _lastResumeSyncAt = now;
+      try {
+        await _waitForConnectivity();
+        if (kDebugMode) {
+          debugPrint('WalletView: resume-triggered sync requested (silent=true, force=true).');
+        }
+        await _requestWalletSync(silent: true, force: true);
+      } catch (_) {
+        if (kDebugMode) {
+          debugPrint('WalletView: resume sync request threw; provider handles downstream errors.');
+        }
+      } finally {
+        _isResumeSyncInProgress = false;
+      }
     }
 
-    _isResumeSyncInProgress = true;
-    _lastResumeSyncAt = now;
-    try {
-      if (kDebugMode) {
-        debugPrint('WalletView: resume-triggered sync requested (silent=true, force=true).');
+    Future<void> _waitForConnectivity() async {
+      final connectivity = Connectivity();
+      var result = await connectivity.checkConnectivity();
+      if (result.any((r) => r != ConnectivityResult.none)) return;
+
+      // Wait briefly for the radio to come back, don't block forever.
+      try {
+        await connectivity.onConnectivityChanged
+            .firstWhere((r) => r.any((c) => c != ConnectivityResult.none))
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // Timed out waiting — proceed anyway, fetchUtxos/loadBlockchain's own
+        // retry logic and 30s http timeout will handle it from here.
       }
-      await _requestWalletSync(silent: true, force: true);
-    } catch (_) {
-      // Resume sync failures are handled by providers; keep lifecycle flow stable.
-      if (kDebugMode) {
-        debugPrint('WalletView: resume sync request threw; provider handles downstream errors.');
-      }
-    } finally {
-      _isResumeSyncInProgress = false;
     }
-  }
 
   Future<void> _requestWalletSync({bool silent = false, bool force = true}) async {
     if (_isSyncInProgress) {
@@ -1161,7 +1178,7 @@ class _WalletViewState extends State<WalletView> with SingleTickerProviderStateM
                                     child: SizedBox(
                                       width: double.infinity,
                                       child: ButtonWidget(
-                                        text: 'View All Transactions',
+                                        text: 'View more Transactions',
                                         isPrimary: false,
                                         onPressed: () {
                                           Navigator.push(

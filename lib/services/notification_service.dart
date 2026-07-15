@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'dart:async';
 import 'dart:convert';
 
 // Keys for local storage
@@ -32,6 +33,7 @@ class NotificationService {
 
   static bool _initialized = false;
   static bool _isInitializing = false;
+  static StreamSubscription<String>? _tokenRefreshSubscription;
 
   NotificationService({
     required this.backendUrl,
@@ -64,6 +66,48 @@ class NotificationService {
     debugPrint('✓ Registration cleared locally');
   }
 
+  Future<void> _unregisterSpecificToken(String address, String token) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$backendUrl/api/unregister'),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+        },
+        body: json.encode({
+          'address': address,
+          'device_token': token,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('✓ Previous token unregistered from backend');
+      } else {
+        debugPrint('⚠ Previous token unregister failed: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('⚠ Previous token unregister error: $e');
+    }
+  }
+
+  Future<void> _cleanupPreviousTokenIfNeeded(
+    String walletAddress,
+    String newToken,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedToken = prefs.getString(_registeredTokenKey);
+    final savedAddress = prefs.getString(_registeredAddressKey);
+
+    if (
+      savedToken != null &&
+      savedToken != newToken &&
+      savedAddress != null &&
+      savedAddress == walletAddress
+    ) {
+      await _unregisterSpecificToken(walletAddress, savedToken);
+    }
+  }
+
   /// Initialize Firebase and request notification permissions
   Future<void> initialize(String walletAddress) async {
     // Prevent concurrent initialization
@@ -88,6 +132,8 @@ class NotificationService {
         }
       }
       if (token != null) {
+        await _cleanupPreviousTokenIfNeeded(walletAddress, token);
+
         // Only register if token or address changed
         if (await _needsRegistration(token, walletAddress)) {
           debugPrint('Token or address changed, re-registering...');
@@ -135,6 +181,8 @@ class NotificationService {
         if (token != null) {
           debugPrint('✓ FCM Token: ${token.substring(0, 20)}...');
 
+          await _cleanupPreviousTokenIfNeeded(walletAddress, token);
+
           // Only register if token or address changed
           if (await _needsRegistration(token, walletAddress)) {
             // Register with backend
@@ -146,13 +194,19 @@ class NotificationService {
             debugPrint('✓ Already registered with same token, skipping');
           }
 
-          // Listen for token refresh
-          _messaging.onTokenRefresh.listen((newToken) async {
+          // Keep exactly one token-refresh listener to avoid duplicate registration calls.
+          await _tokenRefreshSubscription?.cancel();
+          _tokenRefreshSubscription = _messaging.onTokenRefresh.listen((newToken) async {
             debugPrint('✓ FCM Token refreshed');
-            await registerDevice(walletAddress, newToken);
-            await enablePriceAlerts(walletAddress);
-            await enableChatNotifications(walletAddress);
-            await _saveRegistration(newToken, walletAddress);
+            await _cleanupPreviousTokenIfNeeded(walletAddress, newToken);
+            if (await _needsRegistration(newToken, walletAddress)) {
+              await registerDevice(walletAddress, newToken);
+              await enablePriceAlerts(walletAddress);
+              await enableChatNotifications(walletAddress);
+              await _saveRegistration(newToken, walletAddress);
+            } else {
+              debugPrint('✓ Token refresh received but registration is already up to date');
+            }
           });
         } else {
           debugPrint('✗ Failed to get FCM token');
@@ -397,6 +451,8 @@ class NotificationService {
   /// Delete FCM token
   Future<void> deleteToken() async {
     try {
+      await _tokenRefreshSubscription?.cancel();
+      _tokenRefreshSubscription = null;
       await _messaging.deleteToken();
       _initialized = false;
       debugPrint('✓ FCM token deleted');

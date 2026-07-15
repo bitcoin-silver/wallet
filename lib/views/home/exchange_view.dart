@@ -531,6 +531,8 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                                     'assets/logo_big.png',
                                     height: 80,
                                     width: 80,
+                                    cacheHeight: 160, // 2x for density
+                                    cacheWidth: 160,
                                     errorBuilder: (context, error, stackTrace) {
                                       return const Icon(
                                         Icons.currency_bitcoin,

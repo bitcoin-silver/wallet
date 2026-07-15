@@ -440,6 +440,119 @@ class WalletService {
         .fold(0.0, (sum, u) => sum + (u['amount'] as double));
   }
 
+  double? _parsePositiveFeeRate(dynamic raw) {
+    final num? parsed = raw is num ? raw : num.tryParse(raw?.toString() ?? '');
+    final value = parsed?.toDouble();
+    if (value == null || value <= 0) return null;
+    return value;
+  }
+
+  Future<double> _resolveNodeBaselineFee() async {
+    const hardFloor = 0.00001;
+    double relayFee = hardFloor;
+    double incrementalFee = hardFloor;
+    double mempoolMinFee = hardFloor;
+
+    try {
+      final netInfo = await rpcRequest('getnetworkinfo');
+      final relay = _parsePositiveFeeRate(netInfo?['result']?['relayfee']);
+      final incremental =
+          _parsePositiveFeeRate(netInfo?['result']?['incrementalfee']);
+      if (relay != null) relayFee = relay;
+      if (incremental != null) incrementalFee = incremental;
+    } catch (_) {
+      // Keep defaults when node/network info is unavailable.
+    }
+
+    try {
+      final mempoolInfo = await rpcRequest('getmempoolinfo');
+      final mempoolMin =
+          _parsePositiveFeeRate(mempoolInfo?['result']?['mempoolminfee']);
+      if (mempoolMin != null) mempoolMinFee = mempoolMin;
+    } catch (_) {
+      // Keep defaults when mempool info is unavailable.
+    }
+
+    return max(hardFloor, max(relayFee, max(incrementalFee, mempoolMinFee)));
+  }
+
+  Future<Map<String, dynamic>> resolveFeeRate({
+    double? manualFeeRateCoinPerKb,
+  }) async {
+    if (manualFeeRateCoinPerKb != null) {
+      if (manualFeeRateCoinPerKb <= 0) {
+        return {
+          'success': false,
+          'message': 'Manual fee rate must be greater than zero.',
+          'reason': 'invalid-manual-fee',
+        };
+      }
+      return {
+        'success': true,
+        'feeRate': manualFeeRateCoinPerKb,
+        'source': 'manual',
+      };
+    }
+
+    try {
+      final baselineFeeRate = await _resolveNodeBaselineFee();
+      final response = await rpcRequest('estimatesmartfee', [6]);
+
+      if (response?['error'] != null) {
+        return {
+          'success': true,
+          'feeRate': baselineFeeRate,
+          'baselineFeeRate': baselineFeeRate,
+          'source': 'baseline',
+          'message': 'Smart fee unavailable. Using node baseline fee.',
+        };
+      }
+
+      final double? feeRate =
+          _parsePositiveFeeRate(response?['result']?['feerate']);
+      if (feeRate == null || feeRate <= 0) {
+        return {
+          'success': true,
+          'feeRate': baselineFeeRate,
+          'baselineFeeRate': baselineFeeRate,
+          'source': 'baseline',
+          'message': 'Estimator returned no usable value. Using node baseline fee.',
+        };
+      }
+
+      final sanityCeiling = baselineFeeRate * 50;
+      if (feeRate > sanityCeiling) {
+        return {
+          'success': true,
+          'feeRate': baselineFeeRate,
+          'baselineFeeRate': baselineFeeRate,
+          'estimatedFeeRate': feeRate,
+          'sanityCeiling': sanityCeiling,
+          'source': 'clamped',
+          'message':
+              'Estimator outlier (${feeRate.toStringAsFixed(8)} BTCS/kvB). '
+              'Using baseline ${baselineFeeRate.toStringAsFixed(8)} BTCS/kvB.',
+        };
+      }
+
+      return {
+        'success': true,
+        'feeRate': feeRate,
+        'baselineFeeRate': baselineFeeRate,
+        'source': 'estimated',
+      };
+    } catch (_) {
+      final baselineFeeRate = await _resolveNodeBaselineFee();
+      return {
+        'success': true,
+        'feeRate': baselineFeeRate,
+        'baselineFeeRate': baselineFeeRate,
+        'source': 'baseline',
+        'message': 'Fee estimation request failed. Using node baseline fee.',
+      };
+    }
+  }
+
   Future<Map<String, dynamic>> sendTransactionLocallySigned({
     required String privateKeyWif,
     required String fromAddress,
@@ -507,77 +620,18 @@ class WalletService {
     utxos.sort((a, b) =>
         ((b['amount'] as num).toDouble()).compareTo((a['amount'] as num).toDouble()));
 
-    double feeRate;
-    if (feeRateOverride != null) {
-      if (feeRateOverride <= 0) {
-        return {
-          'success': false,
-          'message': 'Invalid manual fee rate provided.',
-          'feeEstimateRequired': true,
-        };
-      }
-      feeRate = feeRateOverride;
-    } else {
-      try {
-        final r = await rpcRequest('estimatesmartfee', [6]);
-
-        if (r?['error'] != null) {
-          final rpcMsg = r!['error']['message'] as String? ?? 'RPC fee estimation error';
-          return {
-            'success': false,
-            'message': rpcMsg,
-            'feeEstimateRequired': true,
-            'feeEstimateError': rpcMsg,
-          };
-        }
-
-        final result = r?['result'];
-        if (result is! Map<String, dynamic>) {
-          return {
-            'success': false,
-            'message': 'Fee estimation returned an invalid response.',
-            'feeEstimateRequired': true,
-          };
-        }
-
-        final feerateRaw = result['feerate'];
-        if (feerateRaw is! num) {
-          final errors = result['errors'];
-          final details = (errors is List && errors.isNotEmpty)
-              ? errors.join(', ')
-              : 'No fee rate was returned by the node.';
-          return {
-            'success': false,
-            'message': details,
-            'feeEstimateRequired': true,
-            'feeEstimateError': details,
-          };
-        }
-
-        final estimatedFeeRate = feerateRaw.toDouble();
-        if (estimatedFeeRate <= 0) {
-          final errors = result['errors'];
-          final details = (errors is List && errors.isNotEmpty)
-              ? errors.join(', ')
-              : 'Node could not estimate a valid fee rate.';
-          return {
-            'success': false,
-            'message': details,
-            'feeEstimateRequired': true,
-            'feeEstimateError': details,
-          };
-        }
-
-        feeRate = estimatedFeeRate;
-      } catch (e) {
-        return {
-          'success': false,
-          'message': 'RPC fee estimation failed: $e',
-          'feeEstimateRequired': true,
-          'feeEstimateError': 'RPC fee estimation failed: $e',
-        };
-      }
+    final feeResolution = await resolveFeeRate(
+      manualFeeRateCoinPerKb: feeRateOverride,
+    );
+    if (feeResolution['success'] != true) {
+      return {
+        'success': false,
+        'message': feeResolution['message'] as String? ?? 'Invalid manual fee rate provided.',
+        'feeEstimateRequired': true,
+        'feeEstimateError': feeResolution['message'] as String?,
+      };
     }
+    final feeRate = (feeResolution['feeRate'] as num).toDouble();
 
     final selectedUtxos = <Map<String, dynamic>>[];
     int inputSumSats = 0;
@@ -609,24 +663,47 @@ class WalletService {
         continue;
       }
 
-      final inputs = selectedUtxos.map((u) {
+      final inputs = <BTCSTxInput>[];
+      for (final u in selectedUtxos) {
         String? scriptHex = u['scriptPubKey'] as String?;
         if (scriptHex == null || scriptHex.isEmpty) {
           try {
             final computedScript = BTCSSigner.scriptFromAddress(fromAddress);
             scriptHex = HEX.encode(computedScript);
           } catch (_) {
-            scriptHex = '';
+            return {
+              'success': false,
+              'message': 'Could not resolve scriptPubKey for input ${u['txid']}:${u['vout']}.',
+            };
           }
         }
 
-        return BTCSTxInput(
-          txid: u['txid'] as String,
-          vout: u['vout'] as int,
-          scriptPubKey: Uint8List.fromList(HEX.decode(scriptHex)),
-          satoshis: ((u['amount'] as num).toDouble() * satsPerBtcs).round(),
+        Uint8List scriptBytes;
+        try {
+          scriptBytes = Uint8List.fromList(HEX.decode(scriptHex));
+        } catch (_) {
+          return {
+            'success': false,
+            'message': 'Invalid scriptPubKey for input ${u['txid']}:${u['vout']}.',
+          };
+        }
+
+        if (scriptBytes.isEmpty) {
+          return {
+            'success': false,
+            'message': 'Empty scriptPubKey for input ${u['txid']}:${u['vout']}.',
+          };
+        }
+
+        inputs.add(
+          BTCSTxInput(
+            txid: u['txid'] as String,
+            vout: u['vout'] as int,
+            scriptPubKey: scriptBytes,
+            satoshis: ((u['amount'] as num).toDouble() * satsPerBtcs).round(),
+          ),
         );
-      }).toList();
+      }
 
       final outputs = <BTCSTxOutput>[];
       int changeSats = 0;
