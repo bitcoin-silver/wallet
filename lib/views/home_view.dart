@@ -1,9 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:bitcoinsilver_wallet/views/home/addressbook_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/exchange_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/wallet_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/settings_view.dart';
-import 'package:bitcoinsilver_wallet/views/home/addressbook_view.dart';
-import 'package:bitcoinsilver_wallet/views/chat/chat_view.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -12,13 +12,18 @@ class HomeView extends StatefulWidget {
 }
 
 class _HomeViewState extends State<HomeView> {
+  static int _lastSelectedIndex = 0;
   int _selectedIndex = 0;
   late final PageController _pageController;
 
   @override
   void initState() {
     super.initState();
+    _selectedIndex = _lastSelectedIndex;
     _pageController = PageController(initialPage: _selectedIndex);
+    if (kDebugMode) {
+      debugPrint('[HomeView] initState selectedIndex=$_selectedIndex');
+    }
   }
 
   @override
@@ -30,8 +35,12 @@ class _HomeViewState extends State<HomeView> {
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
+      _lastSelectedIndex = index;
     });
     _pageController.jumpToPage(index);
+    if (kDebugMode) {
+      debugPrint('[HomeView] tab changed to index=$index');
+    }
   }
 
   @override
@@ -43,7 +52,6 @@ class _HomeViewState extends State<HomeView> {
         children: const [
           WalletView(),
           ExchangeView(),
-          ChatView(showBackButton: false),
           AddressbookView(),
           SettingsView(),
         ],
@@ -75,9 +83,8 @@ class _HomeViewState extends State<HomeView> {
               children: [
                 _buildNavItem(0, Icons.home_rounded, 'Home'),
                 _buildNavItem(1, Icons.explore_rounded, 'Discover'),
-                _buildNavItem(2, Icons.chat_bubble_rounded, 'Chat'),
-                _buildNavItem(3, Icons.contacts_rounded, 'Addrbook'),
-                _buildNavItem(4, Icons.settings_rounded, 'Settings'),
+                _buildNavItem(2, Icons.contact_page_rounded, 'Address'),
+                _buildNavItem(3, Icons.settings_rounded, 'Settings'),
               ],
             ),
           ),
@@ -92,7 +99,7 @@ class _HomeViewState extends State<HomeView> {
       onTap: () => _onItemTapped(index),
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        width: 60,
+        width: 68,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

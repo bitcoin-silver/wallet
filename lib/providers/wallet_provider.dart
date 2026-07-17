@@ -19,7 +19,6 @@ class WalletProvider with ChangeNotifier {
   final WalletService _ws;
   late NotificationService _notificationService;
   Function(String address)? _onTransactionTapped;
-  Function()? _onChatMessageTapped;
 
   String? _privateKey;
   String? _mnemonic;
@@ -408,7 +407,6 @@ class WalletProvider with ChangeNotifier {
       backendUrl: backendUrl,
       onTransactionReceived: _handleTransactionReceived,
       onNotificationTapped: _handleNotificationTapped,
-      onChatMessageReceived: _handleChatMessageReceived,
     );
   }
 
@@ -448,23 +446,9 @@ class WalletProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Handle chat message notification tap
-  void _handleChatMessageReceived(Map<String, dynamic> data) {
-    debugPrint('💬 Chat message notification received in WalletProvider');
-    if (_onChatMessageTapped != null) {
-      _onChatMessageTapped!();
-    }
-    notifyListeners();
-  }
-
   /// Set callback for transaction refresh (called from main.dart)
   void setTransactionRefreshCallback(Function(String address) callback) {
     _onTransactionTapped = callback;
-  }
-
-  /// Set callback for chat message tap (called from main.dart)
-  void setChatMessageRefreshCallback(Function() callback) {
-    _onChatMessageTapped = callback;
   }
 
   Future<void> loadWallet() async {

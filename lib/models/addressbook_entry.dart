@@ -1,66 +1,43 @@
 class AddressbookEntry {
-  final String username;
+  final String label;
   final String address;
-  final bool isFavorite;
-  final DateTime? addedAt;
+  final DateTime createdAt;
 
-  AddressbookEntry({
-    required this.username,
+  const AddressbookEntry({
+    required this.label,
     required this.address,
-    this.isFavorite = false,
-    DateTime? addedAt,
-  }) : addedAt = addedAt ?? DateTime.now();
+    required this.createdAt,
+  });
 
-  // Create from JSON
   factory AddressbookEntry.fromJson(Map<String, dynamic> json) {
+    final rawLabel = (json['label'] ?? json['username'] ?? '').toString().trim();
+    final rawAddress = (json['address'] ?? '').toString().trim();
+    final rawAddedAt = json['addedAt']?.toString();
+
     return AddressbookEntry(
-      username: json['username'] as String,
-      address: json['address'] as String,
-      isFavorite: json['isFavorite'] as bool? ?? false,
-      addedAt: json['addedAt'] != null
-          ? DateTime.parse(json['addedAt'] as String)
-          : DateTime.now(),
+      label: rawLabel,
+      address: rawAddress,
+      createdAt: DateTime.tryParse(rawAddedAt ?? '') ?? DateTime.now(),
     );
   }
 
-  // Convert to JSON
   Map<String, dynamic> toJson() {
     return {
-      'username': username,
+      'label': label,
       'address': address,
-      'isFavorite': isFavorite,
-      'addedAt': addedAt?.toIso8601String(),
+      'addedAt': createdAt.toIso8601String(),
     };
   }
 
-  // Create a copy with modified fields
   AddressbookEntry copyWith({
-    String? username,
+    String? label,
     String? address,
-    bool? isFavorite,
-    DateTime? addedAt,
+    DateTime? createdAt,
   }) {
     return AddressbookEntry(
-      username: username ?? this.username,
+      label: label ?? this.label,
       address: address ?? this.address,
-      isFavorite: isFavorite ?? this.isFavorite,
-      addedAt: addedAt ?? this.addedAt,
+      createdAt: createdAt ?? this.createdAt,
     );
-  }
-
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is AddressbookEntry &&
-        other.username == username &&
-        other.address == address;
-  }
-
-  @override
-  int get hashCode => username.hashCode ^ address.hashCode;
-
-  @override
-  String toString() {
-    return 'AddressbookEntry(username: $username, address: ${address.substring(0, 10)}..., isFavorite: $isFavorite)';
   }
 }

@@ -41,18 +41,8 @@ class MainActivity: FlutterFragmentActivity() {
                 enableVibration(true)
                 enableLights(true)
             }
-            val chatChannel = NotificationChannel(
-                "chat_messages",
-                "Chat Messages",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifications for new chat messages"
-                enableVibration(true)
-                enableLights(true)
-            }
             notificationManager.createNotificationChannel(transactionChannel)
             notificationManager.createNotificationChannel(priceAlertChannel)
-            notificationManager.createNotificationChannel(chatChannel)
         }
     }
 }

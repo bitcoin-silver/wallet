@@ -16,8 +16,7 @@ class Config {
   static const String liveCoinWatchApiKey = String.fromEnvironment('LIVECOINWATCH_API_KEY', defaultValue: '');
   static const String btcsCode = '____BTCS';
 
-  // Backend API Configuration (for chat and other features)
+  // Backend API Configuration
   static const String apiBaseUrl = 'https://bitcoinsilver.eu';
   static const String apiKey = String.fromEnvironment('NOTIFICATION_API_KEY', defaultValue: '');
-  static const String chatSecret = String.fromEnvironment('CHAT_SECRET', defaultValue: '');
 }

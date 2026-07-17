@@ -33,6 +33,7 @@
 
 ### Latest Updates
 
+- Chat has been removed due to a recent Google Play policy change/update
 - Refined Send fee UX with a clearer fee source selector (`Manual` vs `Auto (Node Fee)`) and active-state highlighting.
 - Simplified estimated fee card layout with clearer grouping: estimated fee, fee source, fee rate, and net send after fee (advanced input-selected mode).
 - Improved simple mode fee estimation to be amount-aware using confirmed UTXOs, producing more realistic estimates than a fixed baseline example.
@@ -168,9 +169,7 @@ Contributions are welcome! Please:
 
 For bugs or feature requests, please open an issue.
 
-```bash
-- Current Google Play version 5.6
-```
+Current Google Play version: 6.0
 
 <a href="https://play.google.com/store/apps/details?id=top.bitcoinsilver.wallet2025&pli=1">
     <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="60">

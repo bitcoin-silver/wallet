@@ -4,14 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:bitcoinsilver_wallet/providers/addressbook_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
-import 'package:bitcoinsilver_wallet/providers/addressbook_provider.dart';
-import 'package:bitcoinsilver_wallet/providers/chat_provider.dart';
 import 'package:bitcoinsilver_wallet/views/setup_view.dart';
 import 'package:bitcoinsilver_wallet/views/biometric_gate.dart';
-import 'package:bitcoinsilver_wallet/views/chat/chat_view.dart';
-import 'package:bitcoinsilver_wallet/services/chat_notification_service.dart';
 
 // Backend URL - HTTPS endpoint
 const String backendUrl = 'https://bitcoinsilver.eu';
@@ -56,17 +53,10 @@ void main() async {
   // Initialize providers
   final wp = WalletProvider();
   final bp = BlockchainProvider();
+  final abp = AddressbookProvider();
 
   // Link providers - so notifications refresh both balance and transactions silently
   wp.setTransactionRefreshCallback((address) => bp.loadBlockchain(address, silent: true));
-  wp.setChatMessageRefreshCallback(() {
-    // Navigate to chat when notification is tapped
-    navigatorKey.currentState?.push(
-      MaterialPageRoute(
-        builder: (context) => const ChatView(showBackButton: true),
-      ),
-    );
-  });
 
   // Add error handling for Flutter framework
   if (kDebugMode) {
@@ -80,17 +70,6 @@ void main() async {
     };
   }
 
-  // Setup chat notification tap handler
-  final chatNotificationService = ChatNotificationService();
-  chatNotificationService.onNotificationTapped = () {
-    // Navigate to chat when notification is tapped
-    navigatorKey.currentState?.push(
-      MaterialPageRoute(
-        builder: (context) => const ChatView(showBackButton: true),
-      ),
-    );
-  };
-
   final startupFuture = _bootstrapApp(wp, bp);
 
   runApp(
@@ -98,8 +77,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider<WalletProvider>.value(value: wp),
         ChangeNotifierProvider<BlockchainProvider>.value(value: bp),
-        ChangeNotifierProvider<AddressbookProvider>(create: (_) => AddressbookProvider()),
-        ChangeNotifierProvider<ChatProvider>(create: (_) => ChatProvider()),
+        ChangeNotifierProvider<AddressbookProvider>.value(value: abp),
       ],
       child: MyApp(startupFuture: startupFuture),
     ),

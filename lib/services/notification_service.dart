@@ -29,7 +29,6 @@ class NotificationService {
   // Callbacks for handling notifications
   Function(String txid, String amount, String address)? onTransactionReceived;
   Function(String txid)? onNotificationTapped;
-  Function(Map<String, dynamic> data)? onChatMessageReceived;
 
   static bool _initialized = false;
   static bool _isInitializing = false;
@@ -39,7 +38,6 @@ class NotificationService {
     required this.backendUrl,
     this.onTransactionReceived,
     this.onNotificationTapped,
-    this.onChatMessageReceived,
   });
 
   /// Check if we need to register (token or address changed)
@@ -139,7 +137,6 @@ class NotificationService {
           debugPrint('Token or address changed, re-registering...');
           await registerDevice(walletAddress, token);
           await enablePriceAlerts(walletAddress);
-          await enableChatNotifications(walletAddress);
           await _saveRegistration(token, walletAddress);
         } else {
           debugPrint('✓ Already registered with same token, skipping');
@@ -188,7 +185,6 @@ class NotificationService {
             // Register with backend
             await registerDevice(walletAddress, token);
             await enablePriceAlerts(walletAddress);
-            await enableChatNotifications(walletAddress);
             await _saveRegistration(token, walletAddress);
           } else {
             debugPrint('✓ Already registered with same token, skipping');
@@ -202,7 +198,6 @@ class NotificationService {
             if (await _needsRegistration(newToken, walletAddress)) {
               await registerDevice(walletAddress, newToken);
               await enablePriceAlerts(walletAddress);
-              await enableChatNotifications(walletAddress);
               await _saveRegistration(newToken, walletAddress);
             } else {
               debugPrint('✓ Token refresh received but registration is already up to date');
@@ -333,62 +328,6 @@ class NotificationService {
     }
   }
 
-  /// Enable chat notifications for this device
-  Future<void> enableChatNotifications(String address) async {
-    try {
-      String? token = await _messaging.getToken();
-      if (token == null) return;
-
-      final response = await http.post(
-        Uri.parse('$backendUrl/api/chat-notifications/enable'),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey,
-        },
-        body: json.encode({
-          'address': address,
-          'device_token': token,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        debugPrint('✓ Chat notifications enabled');
-      } else {
-        debugPrint('✗ Enable chat notifications failed: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('✗ Enable chat notifications error: $e');
-    }
-  }
-
-  /// Disable chat notifications for this device
-  Future<void> disableChatNotifications(String address) async {
-    try {
-      String? token = await _messaging.getToken();
-      if (token == null) return;
-
-      final response = await http.post(
-        Uri.parse('$backendUrl/api/chat-notifications/disable'),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey,
-        },
-        body: json.encode({
-          'address': address,
-          'device_token': token,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        debugPrint('✓ Chat notifications disabled');
-      } else {
-        debugPrint('✗ Disable chat notifications failed: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('✗ Disable chat notifications error: $e');
-    }
-  }
-
   /// Handle foreground notification
   void _handleMessage(RemoteMessage message) {
     // You can show in-app notification or update UI
@@ -412,9 +351,6 @@ class NotificationService {
       if (txid != null && amount != null && address != null) {
         onTransactionReceived?.call(txid, amount, address);
       }
-    } else if (message.data['type'] == 'chat_message') {
-      debugPrint('💬 Chat message received in foreground');
-      onChatMessageReceived?.call(message.data);
     }
   }
 
@@ -432,9 +368,6 @@ class NotificationService {
         debugPrint('Navigate to transaction: $txid');
         onNotificationTapped?.call(txid);
       }
-    } else if (type == 'chat_message') {
-      debugPrint('Navigate to chat from push notification');
-      onChatMessageReceived?.call(message.data);
     }
   }
 

@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
+import 'package:bitcoinsilver_wallet/models/addressbook_entry.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
-import 'package:bitcoinsilver_wallet/views/home/scanner_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/addressbook_view.dart';
+import 'package:bitcoinsilver_wallet/views/home/scanner_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 
 class SendView extends StatefulWidget {
@@ -112,6 +113,35 @@ class _SendViewState extends State<SendView> {
         _isValidatingAddress = false;
       });
     });
+  }
+
+  Future<void> _pickAddressFromAddressbook() async {
+    if (_isSending) return;
+
+    final selected = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AddressbookView(selectionMode: true),
+      ),
+    );
+
+    if (!mounted || selected == null || selected is! AddressbookEntry) {
+      return;
+    }
+
+    setState(() {
+      _addressController.text = selected.address;
+      _errorMessage = '';
+    });
+    _scheduleAddressValidation(selected.address);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Selected ${selected.label}'),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF2A2A2A),
+      ),
+    );
   }
 
   void _setMaxAmount() {
@@ -1520,13 +1550,8 @@ class _SendViewState extends State<SendView> {
                           controller: _addressController,
                           onChanged: _scheduleAddressValidation,
                           enabled: !_isSending,
-                          autocorrect: false,
-                          enableSuggestions: false,
-                          keyboardType: TextInputType.visiblePassword,
-                          textCapitalization: TextCapitalization.none,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(RegExp(r'[0-9A-Za-z]')),
-                          ],
+                          keyboardType: TextInputType.text,
+                          textInputAction: TextInputAction.done,
                           decoration: InputDecoration(
                             labelText: 'Recipient Address (bs1...)',
                             errorText: _addressValid == false ? 'Invalid address' : null,
@@ -1555,34 +1580,12 @@ class _SendViewState extends State<SendView> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.contacts, color: Colors.cyanAccent),
-                                  onPressed: _isSending ? null : () async {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => AddressbookView(
-                                          selectionMode: true,
-                                          onAddressSelected: (address, username) {
-                                            setState(() {
-                                              _addressController.text = address;
-                                            });
-                                            _scheduleAddressValidation(address);
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(
-                                                content: Text('Selected @$username'),
-                                                backgroundColor: const Color(0xFF2A2A2A),
-                                                duration: const Duration(seconds: 2),
-                                                behavior: SnackBarBehavior.floating,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(12),
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                  icon: const Icon(
+                                    Icons.contact_page_rounded,
+                                    color: Colors.cyanAccent,
+                                  ),
+                                  tooltip: 'Choose from Address Book',
+                                  onPressed: _isSending ? null : _pickAddressFromAddressbook,
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.qr_code_scanner, color: Colors.white),

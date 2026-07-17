@@ -3,7 +3,5 @@
   "RPC_USER": "",
   "RPC_PASSWORD": "",
   "NOTIFICATION_API_KEY": "",
-  "CHAT_SECRET": "",
-  "SECONDARY_RPC_URL": "",
   "LIVECOINWATCH_API_KEY": ""
 }

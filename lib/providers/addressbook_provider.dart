@@ -1,372 +1,358 @@
 import 'dart:convert';
-import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:bitcoinsilver_wallet/models/addressbook_entry.dart';
-import 'package:bitcoinsilver_wallet/services/addressbook_service.dart';
-import 'package:bitcoinsilver_wallet/services/chat_service.dart';
 
 class AddressbookProvider with ChangeNotifier {
-  final ChatService _chatService = ChatService();
-  List<AddressbookEntry> _favorites = [];
-  List<AddressbookEntry> _recentSearches = [];
+  static const String _storageKey = 'addressbook_entries_v1';
+  static const int maxImportEntries = 5000;
+  static const int maxLabelLength = 64;
+  static const int maxAddressLength = 128;
+  static final RegExp _legacyAddressRegex = RegExp(
+    r'^[bB83][1-9A-HJ-NP-Za-km-z]{24,33}$',
+  );
+  static final RegExp _bech32AddressRegex = RegExp(r'^bs1[a-z0-9]{39,59}$');
+
+  final List<AddressbookEntry> _entries = [];
   bool _isLoading = false;
-  String? _errorMessage;
-  AddressbookEntry? _lastSearchResult;
+  Future<void>? _inFlightLoad;
 
-  static const String _favoritesKey = 'addressbook_favorites';
-  static const String _recentSearchesKey = 'addressbook_recent_searches';
-  static const int _maxRecentSearches = 10;
-
-  List<AddressbookEntry> get favorites => _favorites;
-  List<AddressbookEntry> get recentSearches => _recentSearches;
+  List<AddressbookEntry> get entries => List.unmodifiable(_entries);
   bool get isLoading => _isLoading;
-  String? get errorMessage => _errorMessage;
-  AddressbookEntry? get lastSearchResult => _lastSearchResult;
 
   AddressbookProvider() {
-    _loadFromStorage();
+    loadEntries();
   }
 
-  /// Load favorites and recent searches from local storage
-  Future<void> _loadFromStorage() async {
+  Future<void> reloadEntries() => loadEntries();
+
+  Future<void> loadEntries() async {
+    if (_inFlightLoad != null) {
+      return _inFlightLoad!;
+    }
+
+    final loadFuture = _loadEntriesInternal();
+    _inFlightLoad = loadFuture;
+    try {
+      await loadFuture;
+    } finally {
+      if (identical(_inFlightLoad, loadFuture)) {
+        _inFlightLoad = null;
+      }
+    }
+  }
+
+  Future<void> _loadEntriesInternal() async {
+    _isLoading = true;
+    notifyListeners();
+
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      // Load favorites
-      final favoritesJson = prefs.getString(_favoritesKey);
-      if (favoritesJson != null) {
-        final List<dynamic> decoded = jsonDecode(favoritesJson);
-        _favorites = decoded.map((json) => AddressbookEntry.fromJson(json)).toList();
+      final data = prefs.getString(_storageKey);
+      if (data == null || data.isEmpty) {
+        _entries.clear();
+        return;
       }
 
-      // Load recent searches
-      final recentJson = prefs.getString(_recentSearchesKey);
-      if (recentJson != null) {
-        final List<dynamic> decoded = jsonDecode(recentJson);
-        _recentSearches = decoded.map((json) => AddressbookEntry.fromJson(json)).toList();
+      final decoded = jsonDecode(data);
+      if (decoded is! List) {
+        _entries.clear();
+        return;
       }
 
+      _entries
+        ..clear()
+        ..addAll(
+          decoded
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .map(AddressbookEntry.fromJson)
+              .where((e) => e.label.isNotEmpty && e.address.isNotEmpty),
+        );
+    } catch (_) {
+      _entries.clear();
+    } finally {
+      _isLoading = false;
       notifyListeners();
-    } catch (e) {
-      debugPrint('Error loading addressbook data: $e');
     }
   }
 
-  /// Save favorites to local storage
-  Future<void> _saveFavorites() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final List<Map<String, dynamic>> jsonList = _favorites.map((e) => e.toJson()).toList();
-      await prefs.setString(_favoritesKey, jsonEncode(jsonList));
-    } catch (e) {
-      debugPrint('Error saving favorites: $e');
-    }
+  Future<void> _persistEntries() async {
+    final prefs = await SharedPreferences.getInstance();
+    final payload = jsonEncode(_entries.map((e) => e.toJson()).toList());
+    await prefs.setString(_storageKey, payload);
   }
 
-  /// Save recent searches to local storage
-  Future<void> _saveRecentSearches() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final List<Map<String, dynamic>> jsonList = _recentSearches.map((e) => e.toJson()).toList();
-      await prefs.setString(_recentSearchesKey, jsonEncode(jsonList));
-    } catch (e) {
-      debugPrint('Error saving recent searches: $e');
-    }
+  String _normalizeAddressForMatch(String address) {
+    final trimmed = address.trim();
+    final lower = trimmed.toLowerCase();
+    return lower.startsWith('bs1') ? lower : trimmed;
   }
 
-  /// Register a username with an address
-  Future<bool> registerUsername({
-    required String username,
+  bool _isValidAddressFormat(String address) {
+    final trimmed = address.trim();
+    final lower = trimmed.toLowerCase();
+    return _legacyAddressRegex.hasMatch(trimmed) ||
+        _bech32AddressRegex.hasMatch(lower);
+  }
+
+  bool _isValidLabelFormat(String label) {
+    final trimmed = label.trim();
+    return trimmed.isNotEmpty && trimmed.length <= maxLabelLength;
+  }
+
+  bool _isValidAddressLength(String address) {
+    final trimmed = address.trim();
+    return trimmed.isNotEmpty && trimmed.length <= maxAddressLength;
+  }
+
+  Future<String?> addOrUpdateEntry({
+    required String label,
     required String address,
+    String? originalAddress,
   }) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
+    final cleanLabel = label.trim();
+    final cleanAddress = address.trim();
 
-    try {
-      // 1. Register with Addressbook backend
-      final success = await AddressbookService.registerUsername(
-        username: username,
-        address: address,
+    if (cleanLabel.isEmpty || cleanAddress.isEmpty) {
+      return 'Label and address are required.';
+    }
+
+    if (!_isValidLabelFormat(cleanLabel)) {
+      return 'Label is too long (max $maxLabelLength characters).';
+    }
+
+    if (!_isValidAddressLength(cleanAddress)) {
+      return 'Address is too long (max $maxAddressLength characters).';
+    }
+
+    if (!_isValidAddressFormat(cleanAddress)) {
+      return 'Address format is invalid.';
+    }
+
+    final normalizedCleanAddress = _normalizeAddressForMatch(cleanAddress);
+
+    final existingByAddress = _entries.indexWhere(
+      (e) =>
+          _normalizeAddressForMatch(e.address) == normalizedCleanAddress,
+    );
+
+    if (existingByAddress != -1 &&
+        (originalAddress == null ||
+            _normalizeAddressForMatch(_entries[existingByAddress].address) !=
+                _normalizeAddressForMatch(originalAddress))) {
+      return 'This address is already saved.';
+    }
+
+    if (originalAddress != null && originalAddress.trim().isNotEmpty) {
+      final existingIndex = _entries.indexWhere(
+        (e) =>
+            _normalizeAddressForMatch(e.address) ==
+            _normalizeAddressForMatch(originalAddress),
       );
-
-      if (success) {
-        // 2. Also register with Chat backend to keep them in sync
-        try {
-          await _chatService.setNickname(username, walletAddress: address);
-          debugPrint('✅ Also registered nickname in Chat backend');
-        } catch (chatError) {
-          debugPrint('⚠️ Failed to register nickname in Chat backend: $chatError');
-          // We don't fail the whole registration if chat backend fails
-        }
-      }
-
-      _isLoading = false;
-      notifyListeners();
-      return success;
-    } catch (e) {
-      _isLoading = false;
-      _errorMessage = e.toString().replaceAll('Exception: ', '');
-      notifyListeners();
-      return false;
-    }
-  }
-
-  /// Look up an entry by username
-  Future<AddressbookEntry?> searchByUsername(String username) async {
-    _isLoading = true;
-    _errorMessage = null;
-    _lastSearchResult = null;
-    notifyListeners();
-
-    try {
-      final result = await AddressbookService.lookupByUsername(username);
-
-      if (result != null) {
-        _lastSearchResult = result;
-        _addToRecentSearches(result);
+      if (existingIndex != -1) {
+        _entries[existingIndex] = _entries[existingIndex].copyWith(
+          label: cleanLabel,
+          address: cleanAddress,
+        );
       } else {
-        _errorMessage = 'Username not found';
+        _entries.insert(
+          0,
+          AddressbookEntry(
+            label: cleanLabel,
+            address: cleanAddress,
+            createdAt: DateTime.now(),
+          ),
+        );
       }
-
-      _isLoading = false;
-      notifyListeners();
-      return result;
-    } catch (e) {
-      _isLoading = false;
-      _errorMessage = e.toString().replaceAll('Exception: ', '');
-      notifyListeners();
-      return null;
+    } else {
+      _entries.insert(
+        0,
+        AddressbookEntry(
+          label: cleanLabel,
+          address: cleanAddress,
+          createdAt: DateTime.now(),
+        ),
+      );
     }
+
+    await _persistEntries();
+    notifyListeners();
+    return null;
   }
 
-  /// Look up an entry by address
-  Future<AddressbookEntry?> searchByAddress(String address) async {
-    _isLoading = true;
-    _errorMessage = null;
-    _lastSearchResult = null;
+  Future<void> removeEntry(String address) async {
+    final normalizedAddress = _normalizeAddressForMatch(address);
+    _entries.removeWhere(
+      (e) => _normalizeAddressForMatch(e.address) == normalizedAddress,
+    );
+    await _persistEntries();
     notifyListeners();
+  }
 
+  Future<void> clearEntries() async {
+    _entries.clear();
+    await _persistEntries();
+    notifyListeners();
+  }
+
+  String exportToBtcsJson() {
+    final contacts = _entries
+        .map(
+          (e) => <String, dynamic>{
+            'username': e.label,
+            'address': e.address,
+            'isFavorite': true,
+            'addedAt': e.createdAt.toIso8601String(),
+          },
+        )
+        .toList();
+
+    return jsonEncode(<String, dynamic>{
+      'version': '1.0',
+      'exportDate': DateTime.now().toIso8601String(),
+      'contactCount': contacts.length,
+      'contacts': contacts,
+    });
+  }
+
+  Future<Map<String, dynamic>> importFromBtcsJson(String jsonString) async {
     try {
-      final result = await AddressbookService.lookupByAddress(address);
+      final sanitized = jsonString
+          .replaceAll('\u0000', '')
+          .replaceFirst(RegExp(r'^\uFEFF'), '')
+          .trim();
 
-      if (result != null) {
-        _lastSearchResult = result;
-        _addToRecentSearches(result);
-      } else {
-        _errorMessage = 'Address not registered';
-      }
+      final decoded = jsonDecode(sanitized);
 
-      _isLoading = false;
-      notifyListeners();
-      return result;
-    } catch (e) {
-      _isLoading = false;
-      _errorMessage = e.toString().replaceAll('Exception: ', '');
-      notifyListeners();
-      return null;
-    }
-  }
-
-  /// Add an entry to favorites
-  Future<void> addToFavorites(AddressbookEntry entry) async {
-    // Check if already in favorites
-    if (_favorites.any((e) => e.username == entry.username || e.address == entry.address)) {
-      return;
-    }
-
-    _favorites.insert(0, entry.copyWith(isFavorite: true));
-    await _saveFavorites();
-    notifyListeners();
-  }
-
-  /// Remove an entry from favorites
-  Future<void> removeFromFavorites(AddressbookEntry entry) async {
-    _favorites.removeWhere((e) => e.username == entry.username && e.address == entry.address);
-    await _saveFavorites();
-    notifyListeners();
-  }
-
-  /// Check if an entry is in favorites
-  bool isFavorite(AddressbookEntry entry) {
-    return _favorites.any((e) => e.username == entry.username || e.address == entry.address);
-  }
-
-  /// Add to recent searches (max 10)
-  Future<void> _addToRecentSearches(AddressbookEntry entry) async {
-    // Remove if already exists
-    _recentSearches.removeWhere((e) => e.username == entry.username && e.address == entry.address);
-
-    // Add to beginning
-    _recentSearches.insert(0, entry);
-
-    // Keep only last 10
-    if (_recentSearches.length > _maxRecentSearches) {
-      _recentSearches = _recentSearches.take(_maxRecentSearches).toList();
-    }
-
-    await _saveRecentSearches();
-  }
-
-  /// Clear recent searches
-  Future<void> clearRecentSearches() async {
-    _recentSearches.clear();
-    await _saveRecentSearches();
-    notifyListeners();
-  }
-
-  /// Clear error message
-  void clearError() {
-    _errorMessage = null;
-    notifyListeners();
-  }
-
-  /// Clear last search result
-  void clearLastSearchResult() {
-    _lastSearchResult = null;
-    notifyListeners();
-  }
-
-  /// Export favorites to a .btcs file
-  Future<Map<String, dynamic>> exportToFile() async {
-    try {
-      if (_favorites.isEmpty) {
+      if (decoded is! Map) {
         return {
           'success': false,
-          'message': 'No contacts to export',
+          'message': 'Invalid .btcs format.',
         };
       }
 
-      // Create export data structure
-      final exportData = {
-        'version': '1.0',
-        'exportDate': DateTime.now().toIso8601String(),
-        'contactCount': _favorites.length,
-        'contacts': _favorites.map((e) => e.toJson()).toList(),
-      };
-
-      // Convert to JSON string
-      final jsonString = jsonEncode(exportData);
-
-      return {
-        'success': true,
-        'message': 'Ready to export ${_favorites.length} contacts',
-        'count': _favorites.length,
-        'data': jsonString,
-      };
-    } catch (e) {
-      debugPrint('Error exporting addressbook: $e');
-      return {
-        'success': false,
-        'message': 'Export failed: ${e.toString()}',
-      };
-    }
-  }
-
-  /// Import favorites from a .btcs file
-  Future<Map<String, dynamic>> importFromFile(String filePath) async {
-    try {
-      // Validate file extension
-      if (!filePath.toLowerCase().endsWith('.btcs')) {
+      final decodedMap = Map<String, dynamic>.from(decoded);
+      if (!decodedMap.containsKey('version') || !decodedMap.containsKey('contacts')) {
         return {
           'success': false,
-          'message': 'Invalid file type. Please select a .btcs file',
+          'message': 'Invalid .btcs format. Missing required fields.',
         };
       }
 
-      final file = File(filePath);
+      final declaredCount = decodedMap['contactCount'] is num
+          ? (decodedMap['contactCount'] as num).toInt()
+          : null;
+      final rawEntries = decodedMap['contacts'];
 
-      // Check file exists
-      if (!await file.exists()) {
+      if (rawEntries is! List) {
         return {
           'success': false,
-          'message': 'File not found',
+          'message': 'Invalid .btcs format. Contacts must be a list.',
         };
       }
 
-      // Check file size (max 1 MB)
-      final fileSize = await file.length();
-      if (fileSize > 1024 * 1024) {
+      if (rawEntries.length > maxImportEntries) {
         return {
           'success': false,
-          'message': 'File too large (max 1 MB)',
+          'message': 'File contains too many entries (max $maxImportEntries).',
         };
       }
 
-      // Read and parse file
-      final jsonString = await file.readAsString();
-      final Map<String, dynamic> data = jsonDecode(jsonString);
-
-      // Validate required fields
-      if (!data.containsKey('version') || !data.containsKey('contacts')) {
+      if (declaredCount != null && rawEntries.length < declaredCount) {
         return {
           'success': false,
-          'message': 'Invalid file format',
+          'message':
+              'Selected file appears incomplete ($rawEntries.length of $declaredCount contacts). '
+              'Please reselect the original .btcs file (not a temporary .bin cache copy).',
         };
       }
 
-      // Parse contacts
-      final List<dynamic> contactsJson = data['contacts'];
-      final List<AddressbookEntry> newContacts = [];
-      int duplicates = 0;
+      var imported = 0;
+      var skipped = 0;
 
-      for (var contactJson in contactsJson) {
-        try {
-          // Validate contact data
-          if (!contactJson.containsKey('username') || !contactJson.containsKey('address')) {
-            continue; // Skip invalid entries
-          }
-
-          final username = contactJson['username'] as String;
-          final address = contactJson['address'] as String;
-
-          // Validate username length (min 4 characters)
-          if (username.length < 4) {
-            continue;
-          }
-
-          // Check for duplicates
-          final isDuplicate = _favorites.any(
-            (e) => e.username == username || e.address == address,
-          );
-
-          if (isDuplicate) {
-            duplicates++;
-            continue;
-          }
-
-          // Create entry and add to new contacts
-          final entry = AddressbookEntry.fromJson(contactJson).copyWith(isFavorite: true);
-          newContacts.add(entry);
-        } catch (e) {
-          debugPrint('Error parsing contact: $e');
-          // Skip invalid entries
+      for (final item in rawEntries) {
+        if (item is! Map) {
+          skipped++;
           continue;
         }
+
+        final entry = AddressbookEntry.fromJson(Map<String, dynamic>.from(item));
+        if (!_isValidLabelFormat(entry.label) ||
+            !_isValidAddressLength(entry.address) ||
+            !_isValidAddressFormat(entry.address)) {
+          skipped++;
+          continue;
+        }
+
+        final normalizedEntryAddress = _normalizeAddressForMatch(entry.address);
+        final existingIndex = _entries.indexWhere(
+          (e) =>
+              _normalizeAddressForMatch(e.address) == normalizedEntryAddress,
+        );
+
+        if (existingIndex != -1) {
+          _entries[existingIndex] = _entries[existingIndex].copyWith(
+            label: entry.label,
+          );
+        } else {
+          _entries.add(
+            AddressbookEntry(
+              label: entry.label,
+              address: entry.address,
+              createdAt: entry.createdAt,
+            ),
+          );
+        }
+        imported++;
       }
 
-      // Add new contacts to favorites
-      _favorites.addAll(newContacts);
-      await _saveFavorites();
+      await _persistEntries();
       notifyListeners();
 
-      final message = duplicates > 0
-          ? 'Imported ${newContacts.length} contacts, $duplicates duplicates skipped'
-          : 'Imported ${newContacts.length} contacts';
+      if (imported == 0) {
+        return {
+          'success': false,
+          'imported': imported,
+          'skipped': skipped,
+          'message': 'No valid contacts found in this .btcs file.',
+        };
+      }
 
       return {
         'success': true,
-        'message': message,
-        'imported': newContacts.length,
-        'duplicates': duplicates,
+        'imported': imported,
+        'skipped': skipped,
+        'message': 'Imported $imported contacts. Skipped $skipped invalid contacts.',
       };
     } catch (e) {
-      debugPrint('Error importing addressbook: $e');
+      if (e is FormatException) {
+        final lower = e.message.toLowerCase();
+        if (lower.contains('unexpected end of input')) {
+          return {
+            'success': false,
+            'message':
+                'Selected .btcs file appears incomplete or truncated. Please reselect the original file.',
+          };
+        }
+
+        return {
+          'success': false,
+          'message': 'Selected .btcs file is not valid JSON content (${e.message}).',
+        };
+      }
+
       return {
         'success': false,
-        'message': 'Import failed: ${e.toString()}',
+        'message': 'Could not import .btcs file.',
       };
     }
   }
+
+  Future<Map<String, dynamic>> importFromJsonString(String jsonString) {
+    return importFromBtcsJson(jsonString);
+  }
+
 }
