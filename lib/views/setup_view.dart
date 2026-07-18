@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/services/biometric_service.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
-import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 
 class SetupView extends StatelessWidget {
   SetupView({super.key});
@@ -200,9 +200,9 @@ class SetupView extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     const Text(
-                      'Your Address:',
+                      'Wallet Address:',
                       style: TextStyle(
-                        color: Colors.white60,
+                        color: Colors.cyanAccent,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -219,10 +219,25 @@ class SetupView extends StatelessWidget {
                         address,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                          fontSize: 11,
+                          fontSize: 12,
                           fontFamily: 'monospace',
                           color: Colors.cyanAccent,
                         ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          await Clipboard.setData(ClipboardData(text: address));
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Address copied')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy, size: 16),
+                        label: const Text('Copy Address'),
                       ),
                     ),
                     if (mnemonic != null) ...[
@@ -254,6 +269,21 @@ class SetupView extends StatelessWidget {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () async {
+                            await Clipboard.setData(ClipboardData(text: mnemonic));
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Seed phrase copied')),
+                            );
+                          },
+                          icon: const Icon(Icons.copy, size: 16),
+                          label: const Text('Copy Seed Phrase'),
+                        ),
+                      ),
                     ],
                     const SizedBox(height: 16),
                     const Text(
@@ -281,6 +311,21 @@ class SetupView extends StatelessWidget {
                           fontFamily: 'monospace',
                           color: Colors.white38,
                         ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          await Clipboard.setData(ClipboardData(text: privateKey));
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Private key copied')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy, size: 16),
+                        label: const Text('Copy Private Key'),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -404,6 +449,28 @@ class SetupView extends StatelessWidget {
     );
   }
 
+  ButtonStyle _primaryActionStyle() {
+    return ElevatedButton.styleFrom(
+      minimumSize: const Size(double.infinity, 52),
+      backgroundColor: Colors.cyanAccent,
+      foregroundColor: Colors.black,
+      textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 0,
+    );
+  }
+
+  ButtonStyle _secondaryActionStyle() {
+    return OutlinedButton.styleFrom(
+      minimumSize: const Size(double.infinity, 52),
+      foregroundColor: Colors.white,
+      textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      side: const BorderSide(color: Colors.white38),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      backgroundColor: Colors.white.withValues(alpha: 0.02),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -420,105 +487,173 @@ class SetupView extends StatelessWidget {
             LayoutBuilder(
               builder: (context, constraints) {
                 return SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
                       minHeight: constraints.maxHeight,
                     ),
-                    child: IntrinsicHeight(
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            const SizedBox(height: 50),
-                          const Text(
-                            'Welcome to Your Future',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            'Recover Your Wallet',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          const Text(
-                            'Enter your seed phrase or private key to recover your wallet.',
-                            style: TextStyle(color: Colors.white54),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 20),
-                          TextField(
-                            controller: _recoverController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: 'Seed phrase or private key',
-                              hintStyle: const TextStyle(color: Colors.white54),
-                              filled: true,
-                              fillColor: Colors.transparent,
-                              enabledBorder: OutlineInputBorder(
-                                borderSide:
-                                    const BorderSide(color: Colors.white),
-                                borderRadius: BorderRadius.circular(8.0),
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.56),
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        22,
+                        16,
+                        20 + MediaQuery.of(context).viewPadding.bottom,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 540),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Center(
+                                child: Container(
+                                  width: 66,
+                                  height: 66,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.cyanAccent.withValues(alpha: 0.15),
+                                    border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.55)),
+                                  ),
+                                  child: const Icon(Icons.account_balance_wallet_outlined, color: Colors.cyanAccent, size: 32),
+                                ),
                               ),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide:
-                                    const BorderSide(color: Colors.white),
-                                borderRadius: BorderRadius.circular(8.0),
+                              const SizedBox(height: 18),
+                              const Text(
+                                'Set Up Your Wallet',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.3,
+                                ),
                               ),
-                            ),
+                              const SizedBox(height: 10),
+                              const Text(
+                                'Recover an existing wallet or create a new one with modern seed phrase backup.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.45),
+                              ),
+                              const SizedBox(height: 24),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.07),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: Colors.white24),
+                                ),
+                                padding: const EdgeInsets.all(18),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    const Text(
+                                      'Recover Wallet',
+                                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'Paste your seed phrase or private key to restore access.',
+                                      style: TextStyle(color: Colors.white60, fontSize: 13),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    TextField(
+                                      controller: _recoverController,
+                                      style: const TextStyle(color: Colors.white),
+                                      maxLines: null,
+                                      textInputAction: TextInputAction.done,
+                                      decoration: InputDecoration(
+                                        hintText: 'Seed phrase or private key',
+                                        hintStyle: const TextStyle(color: Colors.white54),
+                                        filled: true,
+                                        fillColor: Colors.black.withValues(alpha: 0.25),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: const BorderSide(color: Colors.white30),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: const BorderSide(color: Colors.cyanAccent),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    ElevatedButton.icon(
+                                      onPressed: () => _recoverWallet(context),
+                                      style: _primaryActionStyle(),
+                                      icon: const Icon(Icons.lock_open_rounded, size: 18),
+                                      label: const Text('Recover Wallet'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              Row(
+                                children: [
+                                  const Expanded(child: Divider(color: Colors.white24)),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    child: Text(
+                                      'OR CREATE NEW',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.7),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 1.2,
+                                      ),
+                                    ),
+                                  ),
+                                  const Expanded(child: Divider(color: Colors.white24)),
+                                ],
+                              ),
+                              const SizedBox(height: 18),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.05),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: Colors.white24),
+                                ),
+                                padding: const EdgeInsets.all(18),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    const Text(
+                                      'New to Bitcoin Silver?',
+                                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'Seed phrases (12 or 24 words) are the modern standard and strongly recommended.',
+                                      style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.35),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    ElevatedButton.icon(
+                                      onPressed: () => _generateSeedWallet(context),
+                                      style: _primaryActionStyle(),
+                                      icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                                      label: const Text('Generate Seed Phrase'),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    OutlinedButton.icon(
+                                      onPressed: () => _generateWallet(context),
+                                      style: _secondaryActionStyle(),
+                                      icon: const Icon(Icons.vpn_key_outlined, size: 18),
+                                      label: const Text('Legacy Private Key'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 20),
-                          ButtonWidget(
-                            text: 'Recover Wallet',
-                            isPrimary: true,
-                            onPressed: () => _recoverWallet(context),
-                          ),
-                          const SizedBox(height: 40),
-                          const Divider(color: Colors.white24),
-                          const SizedBox(height: 20),
-                          const Text(
-                            'New to Bitcoin Silver?',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          ButtonWidget(
-                            text: 'Generate Seed Phrase',
-                            isPrimary: true,
-                            onPressed: () => _generateSeedWallet(context),
-                          ),
-                          const SizedBox(height: 10),
-                          ButtonWidget(
-                            text: 'Legacy Private Key',
-                            isPrimary: false,
-                            onPressed: () => _generateWallet(context),
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            'Note: Seed phrases (12/24 words) are the modern standard and highly recommended.',
-                            style: TextStyle(color: Colors.white54, fontSize: 12),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 20),
-                        ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
-        ],
-        ),
+                );
+              },
+            ),
+          ],
+        )
       ),
     );
   }
