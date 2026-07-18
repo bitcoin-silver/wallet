@@ -1415,10 +1415,14 @@ class _SendViewState extends State<SendView> {
           ),
         ],
       ),
-      body: Container(
-        color: Colors.black,
-        constraints: const BoxConstraints.expand(),
-        child: Consumer<WalletProvider>(
+      body: SafeArea(
+        top: false,
+        bottom: true,
+        minimum: const EdgeInsets.only(bottom: 8),
+        child: Container(
+          color: Colors.black,
+          constraints: const BoxConstraints.expand(),
+          child: Consumer<WalletProvider>(
           builder: (context, walletProvider, child) {
             final amountErr = _amountError(walletProvider);
             final feeSnapshot = _currentDisplayedFee(walletProvider);
@@ -1426,7 +1430,12 @@ class _SendViewState extends State<SendView> {
               children: [
                 SingleChildScrollView(
                   child: Padding(
-                    padding: const EdgeInsets.only(top: 32.0, left: 16.0, right: 16.0),
+                    padding: EdgeInsets.only(
+                      top: 32.0,
+                      left: 16.0,
+                      right: 16.0,
+                      bottom: 24.0 + MediaQuery.of(context).viewPadding.bottom,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -1837,6 +1846,7 @@ class _SendViewState extends State<SendView> {
               ],
             );
           },
+          ),
         ),
       ),
     );
