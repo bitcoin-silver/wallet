@@ -24,6 +24,7 @@ class _SendViewState extends State<SendView> {
 
   bool _isChecked = false;
   bool _advancedSend = false;
+  bool _subtractFeeFromAmount = false;
   String _errorMessage = '';
   bool _isSending = false;
   bool? _addressValid;
@@ -40,7 +41,7 @@ class _SendViewState extends State<SendView> {
     return trimmed.isEmpty ? '0' : trimmed;
   }
 
-  String _formatSatVb(double btcsKvB) =>
+    String _formatSatVb(double btcsKvB) =>
       _formatDecimal(_btcsKvBToSatVb(btcsKvB), maxDecimals: 6);
 
   String _feeSourceLabel(WalletProvider provider) {
@@ -56,6 +57,36 @@ class _SendViewState extends State<SendView> {
       default:
         return 'Not Ready';
     }
+  }
+
+  String _formatConfirmationsLabel(int confirmations) {
+    if (confirmations <= 1) {
+      return '$confirmations conf';
+    }
+    return '${_formatCompactConfirmationCount(confirmations)} conf';
+  }
+
+  String _formatCompactConfirmationCount(int confirmations) {
+    if (confirmations < 1000) {
+      return '$confirmations';
+    }
+
+    const suffixes = ['K', 'M', 'B', 'T'];
+    double value = confirmations.toDouble();
+    var suffixIndex = -1;
+
+    while (value >= 1000 && suffixIndex < suffixes.length - 1) {
+      value /= 1000;
+      suffixIndex++;
+    }
+
+    var compact = value.toStringAsPrecision(3);
+    if (compact.contains('.')) {
+      compact = compact.replaceFirst(RegExp(r'0+$'), '');
+      compact = compact.replaceFirst(RegExp(r'\.$'), '');
+    }
+
+    return '$compact${suffixes[suffixIndex]}';
   }
 
   int _selectedUtxoTotalSats(WalletProvider provider) {
@@ -151,7 +182,7 @@ class _SendViewState extends State<SendView> {
     final maxSats = _advancedSend && walletProvider.selectedUtxoCount > 0
         ? _selectedUtxoTotalSats(walletProvider)
         : _btcsToSats(walletProvider.balance ?? 0.0);
-    final maxAmount = _satsToBtcs(maxSats > 0 ? maxSats : 0);
+      final maxAmount = _satsToBtcs(maxSats > 0 ? maxSats : 0);
 
     setState(() {
       _amountController.text = maxAmount.toStringAsFixed(8);
@@ -223,7 +254,22 @@ class _SendViewState extends State<SendView> {
     final walletProvider = Provider.of<WalletProvider>(context, listen: false);
     walletProvider.clearMessage();
     final address = _addressController.text.trim();
-    final amount = double.parse(_amountController.text);
+    final enteredAmount = double.parse(_amountController.text);
+    final liveFeeSnapshot = _currentDisplayedFee(walletProvider);
+    final amount = _effectiveSendAmount(
+      provider: walletProvider,
+      feeSnapshot: liveFeeSnapshot,
+      enteredAmount: enteredAmount,
+    );
+    if (amount <= 0) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Amount must be greater than estimated fee.';
+          _isSending = false;
+        });
+      }
+      return;
+    }
     final selectedUtxos = _advancedSend && walletProvider.selectedUtxoCount > 0
       ? walletProvider.selectedUtxoList
       : null;
@@ -254,10 +300,59 @@ class _SendViewState extends State<SendView> {
       sendFeeRate = manualFeeRate;
     }
 
+    var preferBatchSend = true;
+    while (mounted) {
+      final batchPreview = await walletProvider.assessBatchSendCandidate(
+        address,
+        amount,
+        manualFeeRateCoinPerKb: sendFeeRate,
+        preSelectedUtxos: selectedUtxos,
+      );
+      if (batchPreview['isCandidate'] != true) {
+        break;
+      }
+
+      final decision = await _showBatchDecisionDialog(
+        provider: walletProvider,
+        amount: amount,
+        preview: batchPreview,
+      );
+      if (decision == null || decision == 'cancel') {
+        if (mounted) {
+          setState(() {
+            _isSending = false;
+            _errorMessage = 'Transaction cancelled.';
+          });
+        }
+        return;
+      }
+
+      if (decision == 'manual-fee') {
+        final manualFeeRate = await _showManualFeeDialog(walletProvider);
+        if (manualFeeRate == null) {
+          if (mounted) {
+            setState(() {
+              _isSending = false;
+              _errorMessage = 'Transaction cancelled. A valid fee rate is required.';
+            });
+          }
+          return;
+        }
+        walletProvider.setManualFeeRate(manualFeeRate);
+        sendFeeRate = manualFeeRate;
+        continue;
+      }
+
+      preferBatchSend = decision == 'batch';
+      break;
+    }
+
     final agreed = await _showPreSendConfirmDialog(
       provider: walletProvider,
       toAddress: address,
+      enteredAmount: enteredAmount,
       amount: amount,
+      subtractFeeFromAmount: _subtractFeeFromAmount,
     );
     if (!agreed) {
       if (mounted) {
@@ -270,49 +365,79 @@ class _SendViewState extends State<SendView> {
     }
 
     try {
-      // First attempt to send
       final result = await walletProvider.sendTransaction(
         address,
         amount,
         feeRate: sendFeeRate,
         preSelectedUtxos: selectedUtxos,
+        preferBatchSend: preferBatchSend,
       );
 
-      if (result['success'] == true) {
-        // Success!
-        if (mounted) {
-          await _showPostSendAckDialog(
-            txid: result['txid'] ?? '',
-            amount: amount,
-            fee: (result['fee'] as num?)?.toDouble() ?? 0.0,
+      if (result['success'] != true && result['requiresManualFee'] == true && mounted) {
+        final manualFeeRate = await _showManualFeeDialog(walletProvider);
+        if (manualFeeRate != null) {
+          walletProvider.setManualFeeRate(manualFeeRate);
+          final retryResult = await walletProvider.sendTransaction(
+            address,
+            amount,
+            feeRate: manualFeeRate,
+            preSelectedUtxos: selectedUtxos,
+            preferBatchSend: preferBatchSend,
           );
-        }
-
-        // Clear form
-        if (mounted) {
-          setState(() {
-            _addressController.clear();
-            _amountController.clear();
-            _isChecked = false;
-            _addressValid = null;
-            _errorMessage = '';
-          });
-        }
-
-        walletProvider.resetCoinControl();
-        if (mounted) {
-          setState(() {
-            _advancedSend = false;
-          });
-        }
-
-        // Refresh balance after a delay - capture provider reference before delay
-        final provider = walletProvider;
-        Future.delayed(const Duration(seconds: 3), () async {
-          if (mounted) {
-            await provider.fetchUtxos(force: true);
+          if (retryResult['success'] == true) {
+            _resetSendForm(walletProvider);
+            if (mounted) {
+              await _showSendAckFromResult(retryResult, requestedAmount: amount);
+            }
+          } else if (mounted) {
+            setState(() {
+              _errorMessage = (retryResult['message'] as String?) ?? 'Transaction failed';
+            });
           }
-        });
+        } else if (mounted) {
+          setState(() {
+            _errorMessage = 'Transaction cancelled. A valid fee rate is required.';
+          });
+        }
+        return;
+      }
+
+      if (result['success'] != true && !preferBatchSend && mounted) {
+        final message = (result['message'] as String?) ?? 'Transaction failed.';
+        if (_isLikelyBatchFailureMessage(message)) {
+          final retryAsBatch = await _showRetryBatchDialog(message: message);
+          if (retryAsBatch == true) {
+            final retryResult = await walletProvider.sendTransaction(
+              address,
+              amount,
+              feeRate: sendFeeRate,
+              preSelectedUtxos: selectedUtxos,
+              preferBatchSend: true,
+            );
+            if (retryResult['success'] == true) {
+              _resetSendForm(walletProvider);
+              if (mounted) {
+                await _showSendAckFromResult(retryResult, requestedAmount: amount);
+              }
+              return;
+            }
+
+            if (mounted) {
+              setState(() {
+                _errorMessage = (retryResult['message'] as String?) ??
+                    'Batch retry failed.';
+              });
+            }
+            return;
+          }
+        }
+      }
+
+      if (result['success'] == true) {
+        _resetSendForm(walletProvider);
+        if (mounted) {
+          await _showSendAckFromResult(result, requestedAmount: amount);
+        }
 
         return;
       }
@@ -326,7 +451,6 @@ class _SendViewState extends State<SendView> {
           final shouldRetry = await _showFeeDialog(currentFeeRate, suggestedFeeRate);
 
           if (shouldRetry) {
-            // Retry with suggested fee rate
             setState(() {
               _errorMessage = 'Retrying with higher fee...';
             });
@@ -334,48 +458,26 @@ class _SendViewState extends State<SendView> {
             final retryResult = await walletProvider.sendTransaction(
               address,
               amount,
-              feeRate: suggestedFeeRate + 0.00000001, // Add small bump to ensure acceptance
+              feeRate: suggestedFeeRate + 0.00000001,
               preSelectedUtxos: selectedUtxos,
+              preferBatchSend: preferBatchSend,
             );
 
             if (retryResult['success'] == true) {
+              _resetSendForm(walletProvider);
               if (mounted) {
-                await _showPostSendAckDialog(
-                  txid: retryResult['txid'] ?? '',
-                  amount: amount,
-                  fee: (retryResult['fee'] as num?)?.toDouble() ?? 0.0,
-                );
-              }
-
-              // Clear form
-              if (mounted) {
-                setState(() {
-                  _addressController.clear();
-                  _amountController.clear();
-                  _isChecked = false;
-                  _addressValid = null;
-                  _errorMessage = '';
-                });
-              }
-
-              walletProvider.resetCoinControl();
-              if (mounted) {
-                setState(() {
-                  _advancedSend = false;
-                });
+                await _showSendAckFromResult(retryResult, requestedAmount: amount);
               }
 
               return;
-            } else {
-              // Retry failed
-              if (mounted) {
-                setState(() {
-                  _errorMessage = retryResult['message'] ?? 'Transaction failed';
-                });
-              }
+            }
+
+            if (mounted) {
+              setState(() {
+                _errorMessage = retryResult['message'] ?? 'Transaction failed';
+              });
             }
           } else {
-            // User declined to retry
             if (mounted) {
               setState(() {
                 _errorMessage = 'Transaction cancelled. The network requires a higher fee.';
@@ -407,6 +509,396 @@ class _SendViewState extends State<SendView> {
     }
   }
 
+  void _resetSendForm(WalletProvider provider) {
+    if (mounted) {
+      setState(() {
+        _addressController.clear();
+        _amountController.clear();
+        _isChecked = false;
+        _addressValid = null;
+        _errorMessage = '';
+        _advancedSend = false;
+        _subtractFeeFromAmount = false;
+      });
+    }
+
+    provider.resetCoinControl();
+
+    Future.delayed(const Duration(seconds: 3), () async {
+      if (mounted) {
+        await provider.fetchUtxos(force: true);
+      }
+    });
+  }
+
+  Future<String?> _showBatchDecisionDialog({
+    required WalletProvider provider,
+    required double amount,
+    required Map<String, dynamic> preview,
+  }) async {
+    String reasonLabel(String reason) {
+      switch (reason) {
+        case 'sweep-too-large':
+          return 'Large sweep detected';
+        case 'input-count':
+          return 'High input count detected';
+        case 'tx-size':
+          return 'Large transaction size detected';
+        default:
+          return 'Batch candidate detected';
+      }
+    }
+
+    final reason = (preview['reason'] as String?) ?? 'none';
+    final predictedInputs = (preview['predictedInputCount'] as int?) ?? 0;
+    final predictedVbytes = (preview['predictedVbytes'] as int?) ?? 0;
+    final estimatedBatchCount = (preview['estimatedBatchCount'] as int?) ?? 1;
+    final estimatedSingleFee = (preview['estimatedSingleFee'] as num?)?.toDouble() ?? 0.0;
+    final estimatedTotalBatchFee =
+        (preview['estimatedTotalBatchFee'] as num?)?.toDouble() ?? 0.0;
+    final estimatedNetDelivered =
+        (preview['estimatedNetDelivered'] as num?)?.toDouble() ??
+            (amount - estimatedTotalBatchFee);
+    final usingManualFee = provider.feeRateSource == 'manual';
+
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+          title: const Row(
+            children: [
+              Icon(Icons.layers_rounded, color: Colors.orangeAccent),
+              SizedBox(width: 8),
+              Text('Batch Send Suggested', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  reasonLabel(reason),
+                  style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'This transfer may exceed safe single-transaction limits. '
+                  'You can batch it into multiple broadcasts or continue with normal send.',
+                  style: TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Requested amount', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                    Text('${amount.toStringAsFixed(8)} BTCS'),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Predicted inputs', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                    Text('$predictedInputs'),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Predicted tx size', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                    Text('$predictedVbytes vB'),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Estimated batch count', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                    Text('$estimatedBatchCount'),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Est. single fee', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                    Text('${estimatedSingleFee.toStringAsFixed(8)} BTCS'),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Est. total batch fee', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                    Text('${estimatedTotalBatchFee.toStringAsFixed(8)} BTCS'),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Est. net delivered', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                    Text('${estimatedNetDelivered.toStringAsFixed(8)} BTCS'),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Estimates may vary depending on final input selection and mempool conditions.',
+                  style: TextStyle(color: Colors.white38, fontSize: 11),
+                ),
+                if (!usingManualFee) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'You are currently using node-estimated fee. For batch sends, consider setting a manual fee first for more predictable total cost.',
+                    style: TextStyle(color: Colors.orangeAccent, fontSize: 11),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 'cancel'),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            if (!usingManualFee)
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, 'manual-fee'),
+                child: const Text('Set Manual Fee'),
+              ),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(dialogContext, 'normal'),
+              child: const Text('Normal Send'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, 'batch'),
+              child: const Text('Batch Send'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  bool _isLikelyBatchFailureMessage(String message) {
+    final normalized = message.toLowerCase();
+    return normalized.contains('too many') ||
+        normalized.contains('tx-size') ||
+        normalized.contains('tx size') ||
+        normalized.contains('oversize') ||
+        normalized.contains('too large') ||
+        normalized.contains('too-long-mempool-chain') ||
+        normalized.contains('mempool chain') ||
+        normalized.contains('non-bip68-final') ||
+        normalized.contains('insufficient fee') ||
+        normalized.contains('rejecting replacement');
+  }
+
+  Future<bool?> _showRetryBatchDialog({required String message}) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
+              SizedBox(width: 8),
+              Text('Normal Send Failed', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This failure may be caused by single-transaction size or mempool constraints.',
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Text(message, style: const TextStyle(color: Colors.white, fontSize: 12)),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Retry now using Batch Send?',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Retry as Batch'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showSendAckFromResult(
+    Map<String, dynamic> result, {
+    required double requestedAmount,
+  }) async {
+    final batchTxids = (result['batchTxids'] as List<dynamic>? ?? [])
+        .map((e) => e.toString())
+        .where((txid) => txid.isNotEmpty)
+        .toList();
+    final batched = (result['batched'] == true) || batchTxids.isNotEmpty;
+
+    if (batched) {
+      await _showBatchSendAckDialog(
+        txids: batchTxids,
+        requestedAmount: requestedAmount,
+        grossAmount: (result['grossAmount'] as num?)?.toDouble(),
+        totalFee: (result['fee'] as num?)?.toDouble() ?? 0.0,
+        netAmount: (result['netAmount'] as num?)?.toDouble(),
+      );
+      return;
+    }
+
+    await _showPostSendAckDialog(
+      txid: (result['txid'] as String?) ?? '',
+      amount: requestedAmount,
+      fee: (result['fee'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+
+  Future<void> _showBatchSendAckDialog({
+    required List<String> txids,
+    required double requestedAmount,
+    required double totalFee,
+    double? grossAmount,
+    double? netAmount,
+  }) async {
+    final displayedGross = grossAmount ?? requestedAmount;
+    final displayedNet = netAmount ?? (displayedGross - totalFee);
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color.fromARGB(255, 25, 25, 25),
+          title: const Row(
+            children: [
+              Icon(Icons.fact_check_rounded, color: Colors.greenAccent, size: 24),
+              SizedBox(width: 8),
+              Text('Batch Send Complete', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Broadcasted ${txids.length} transaction${txids.length == 1 ? '' : 's'}.',
+                  style: const TextStyle(
+                    color: Colors.greenAccent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Requested Amount', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    Text('${requestedAmount.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Gross Sent', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    Text('${displayedGross.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total Fee Paid', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    Text('${totalFee.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Estimated Net Delivered', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    Text('${displayedNet.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                if (txids.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('Batch TXIDs', style: TextStyle(color: Colors.white60, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxHeight: 180),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        txids.join('\n'),
+                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.cyanAccent),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: txids.join('\n')));
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          const SnackBar(content: Text('Batch TXIDs copied')),
+                        );
+                      },
+                      icon: const Icon(Icons.copy, size: 16),
+                      label: const Text('Copy TXIDs'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Acknowledge'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   double _satVbToBtcsKvB(double satVb) {
     return satVb * 0.00001;
   }
@@ -414,10 +906,10 @@ class _SendViewState extends State<SendView> {
   Future<double?> _showManualFeeDialog(WalletProvider provider) async {
     bool useSatVb = true;
 
-    const lowBtcsKvB = 0.00000226;
-    const highBtcsKvB = 0.0004;
-    final lowSatVb = lowBtcsKvB / 0.00001;
-    final highSatVb = highBtcsKvB / 0.00001;
+    const lowBTCSKvB = 0.00000226;
+    const highBTCSKvB = 0.0004;
+    final lowSatVb = lowBTCSKvB / 0.00001;
+    final highSatVb = highBTCSKvB / 0.00001;
 
     _manualFeeController.text = _formatDecimal(lowSatVb, maxDecimals: 4);
 
@@ -471,12 +963,12 @@ class _SendViewState extends State<SendView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Low traffic: ${_formatDecimal(lowSatVb, maxDecimals: 4)} sat/vB (${lowBtcsKvB.toStringAsFixed(8)} BTCS/kvB), slower confirmation',
+                          'Low traffic: ${_formatDecimal(lowSatVb, maxDecimals: 4)} sat/vB (${lowBTCSKvB.toStringAsFixed(8)} BTCS/kvB), slower confirmation',
                           style: const TextStyle(color: Colors.white60, fontSize: 12),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'High traffic: ${_formatDecimal(highSatVb, maxDecimals: 4)} sat/vB (${highBtcsKvB.toStringAsFixed(8)} BTCS/kvB), faster confirmation',
+                          'High traffic: ${_formatDecimal(highSatVb, maxDecimals: 4)} sat/vB (${highBTCSKvB.toStringAsFixed(8)} BTCS/kvB), faster confirmation',
                           style: const TextStyle(color: Colors.white60, fontSize: 12),
                         ),
                       ],
@@ -542,7 +1034,7 @@ class _SendViewState extends State<SendView> {
                         onPressed: () {
                           _manualFeeController.text = useSatVb
                               ? _formatDecimal(lowSatVb, maxDecimals: 4)
-                              : lowBtcsKvB.toStringAsFixed(8);
+                              : lowBTCSKvB.toStringAsFixed(8);
                           setDialogState(() {
                             validationError = null;
                           });
@@ -553,7 +1045,7 @@ class _SendViewState extends State<SendView> {
                         onPressed: () {
                           _manualFeeController.text = useSatVb
                               ? _formatDecimal(highSatVb, maxDecimals: 4)
-                              : highBtcsKvB.toStringAsFixed(8);
+                              : highBTCSKvB.toStringAsFixed(8);
                           setDialogState(() {
                             validationError = null;
                           });
@@ -610,17 +1102,36 @@ class _SendViewState extends State<SendView> {
     final text = _amountController.text.trim();
     if (text.isEmpty) return null;
 
-    final value = double.tryParse(text);
-    if (value == null) return 'Invalid number';
-    if (value <= 0) return 'Amount must be greater than zero';
-    if (value < 0.00000546) return 'Amount below dust threshold (0.00000546 BTCS)';
+    final enteredAmount = double.tryParse(text);
+    if (enteredAmount == null) return 'Invalid number';
+    if (enteredAmount <= 0) return 'Amount must be greater than zero';
 
-    final valueSats = _btcsToSats(value);
+    final feeSnapshot = _currentDisplayedFee(provider);
+    if (_subtractFeeFromAmount && feeSnapshot.fee <= 0) {
+      return 'Fee estimate required for subtract-fee mode';
+    }
+
+    final effectiveSendAmount = _effectiveSendAmount(
+      provider: provider,
+      feeSnapshot: feeSnapshot,
+      enteredAmount: enteredAmount,
+    );
+
+    if (_subtractFeeFromAmount && effectiveSendAmount <= 0) {
+      return 'Amount must be greater than estimated fee';
+    }
+    if (effectiveSendAmount < 0.00000546) {
+      return _subtractFeeFromAmount
+          ? 'Recipient amount after fee is below dust threshold (0.00000546 BTCS)'
+          : 'Amount below dust threshold (0.00000546 BTCS)';
+    }
+
+    final enteredAmountSats = _btcsToSats(enteredAmount);
     final spendableSats = _advancedSend && provider.selectedUtxoCount > 0
         ? _selectedUtxoTotalSats(provider)
-        : _btcsToSats(provider.balance ?? 0.0);
+      : _btcsToSats(provider.balance ?? 0.0);
 
-    if (valueSats > spendableSats) {
+    if (enteredAmountSats > spendableSats) {
       if (_advancedSend && provider.selectedUtxoCount > 0) {
         return 'Exceeds selected inputs (${_satsToBtcs(spendableSats).toStringAsFixed(8)} BTCS)';
       }
@@ -628,6 +1139,30 @@ class _SendViewState extends State<SendView> {
     }
 
     return null;
+  }
+
+  double _effectiveSendAmount({
+    required WalletProvider provider,
+    required ({double fee, bool hasExactCoinControlFee, ({double fee, int? inputCount, bool amountAware}) simpleEstimate})
+        feeSnapshot,
+    required double enteredAmount,
+  }) {
+    final value = _subtractFeeFromAmount ? (enteredAmount - feeSnapshot.fee) : enteredAmount;
+    if (value <= 0) return 0.0;
+    return double.parse(value.toStringAsFixed(8));
+  }
+
+  double _estimatedTotalSpendAmount({
+    required WalletProvider provider,
+    required ({double fee, bool hasExactCoinControlFee, ({double fee, int? inputCount, bool amountAware}) simpleEstimate})
+        feeSnapshot,
+    required double enteredAmount,
+  }) {
+    if (_subtractFeeFromAmount) {
+      return double.parse(enteredAmount.toStringAsFixed(8));
+    }
+    final total = enteredAmount + feeSnapshot.fee;
+    return double.parse(total.toStringAsFixed(8));
   }
 
   void _syncAmountToSelection(WalletProvider provider) {
@@ -782,6 +1317,14 @@ class _SendViewState extends State<SendView> {
             ],
           ),
           const SizedBox(height: 8),
+          if (provider.coinControlTruncatedCount > 0)
+            Text(
+              'Showing top ${provider.availableUtxos.length} inputs by amount. '
+              '${provider.coinControlTruncatedCount} smaller input(s) are hidden for performance.',
+              style: const TextStyle(color: Colors.orangeAccent, fontSize: 11),
+            ),
+          if (provider.coinControlTruncatedCount > 0)
+            const SizedBox(height: 8),
           if (provider.selectedUtxoCount > 0)
             Text(
               '${provider.selectedUtxoCount} selected, total ${_satsToBtcs(_selectedUtxoTotalSats(provider)).toStringAsFixed(8)} BTCS',
@@ -798,6 +1341,7 @@ class _SendViewState extends State<SendView> {
                 final key = '${utxo['txid']}:${utxo['vout']}';
                 final isSelected = provider.selectedUtxoKeys.contains(key);
                 final txid = utxo['txid'] as String;
+                final confirmations = (utxo['confirmations'] as num?)?.toInt() ?? 0;
                 final short = '${txid.substring(0, 8)}...${txid.substring(txid.length - 6)}:${utxo['vout']}';
 
                 return Material(
@@ -811,7 +1355,7 @@ class _SendViewState extends State<SendView> {
                     },
                     title: Text(short, style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 12)),
                     subtitle: Text(
-                      '#${globalIndex + 1} | Amount: ${(utxo['amount'] as num).toStringAsFixed(8)} BTCS | Conf: ${utxo['confirmations']}',
+                      '#${globalIndex + 1} | Amount: ${(utxo['amount'] as num).toStringAsFixed(8)} BTCS | ${_formatConfirmationsLabel(confirmations)}',
                       style: const TextStyle(color: Colors.white60, fontSize: 11),
                     ),
                     controlAffinity: ListTileControlAffinity.leading,
@@ -878,9 +1422,18 @@ class _SendViewState extends State<SendView> {
     final rateColor = sourceColor.withValues(alpha: 0.85);
     final rateText =
         '${provider.feeRate.toStringAsFixed(8)} BTCS/kvB (${_formatSatVb(provider.feeRate)} sat/vB)';
-    final netAfterFeeText = provider.estimatedNetSend > 0
-        ? '${provider.estimatedNetSend.toStringAsFixed(8)} BTCS'
-        : '-';
+    final enteredAmount = double.tryParse(_amountController.text.trim());
+    final displayNetAfterFee = (hasExactCoinControlFee && enteredAmount != null && enteredAmount > 0)
+      ? _effectiveSendAmount(
+          provider: provider,
+          feeSnapshot: feeSnapshot,
+          enteredAmount: enteredAmount,
+        )
+      : provider.estimatedNetSend;
+    final netRowLabel = _subtractFeeFromAmount ? 'Recipient After Fee' : 'Max Send After Fee';
+    final netAfterFeeText = displayNetAfterFee > 0
+      ? '${displayNetAfterFee.toStringAsFixed(8)} BTCS'
+      : '-';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -947,8 +1500,8 @@ class _SendViewState extends State<SendView> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Net Send After Fee',
+                Text(
+                  netRowLabel,
                   style: TextStyle(color: Colors.white54, fontSize: 12),
                 ),
                 Text(
@@ -1074,19 +1627,30 @@ class _SendViewState extends State<SendView> {
     ({double fee, bool hasExactCoinControlFee, ({double fee, int? inputCount, bool amountAware}) simpleEstimate})
         feeSnapshot,
   ) {
-    final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
-    if (amount <= 0) return const SizedBox.shrink();
+    final enteredAmount = double.tryParse(_amountController.text.trim()) ?? 0.0;
+    if (enteredAmount <= 0) return const SizedBox.shrink();
 
     final hasSelectedInputs = feeSnapshot.hasExactCoinControlFee;
     final fee = feeSnapshot.fee;
+    final sendAmount = _effectiveSendAmount(
+      provider: provider,
+      feeSnapshot: feeSnapshot,
+      enteredAmount: enteredAmount,
+    );
+    final totalSpend = _estimatedTotalSpendAmount(
+      provider: provider,
+      feeSnapshot: feeSnapshot,
+      enteredAmount: enteredAmount,
+    );
+    if (sendAmount <= 0) return const SizedBox.shrink();
 
     final selectedInputsSats = hasSelectedInputs ? _selectedUtxoTotalSats(provider) : 0;
     final autoSpendableSats = _btcsToSats(provider.balance ?? 0.0);
-    final amountSats = _btcsToSats(amount);
-    final feeSats = _btcsToSats(fee);
+    final sendAmountSats = _btcsToSats(sendAmount);
+    final totalSpendSats = _btcsToSats(totalSpend);
     final expectedChangeSats = hasSelectedInputs
-      ? (selectedInputsSats - amountSats - feeSats)
-      : (autoSpendableSats - amountSats - feeSats);
+      ? (selectedInputsSats - totalSpendSats)
+      : (autoSpendableSats - totalSpendSats);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1119,9 +1683,33 @@ class _SendViewState extends State<SendView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Send Amount', style: TextStyle(color: Colors.white60, fontSize: 12)),
+              const Text('Recipient Amount', style: TextStyle(color: Colors.white60, fontSize: 12)),
               Text(
-                '${_satsToBtcs(amountSats).toStringAsFixed(8)} BTCS',
+                '${_satsToBtcs(sendAmountSats).toStringAsFixed(8)} BTCS',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ],
+          ),
+          if (_subtractFeeFromAmount) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Entered Total (includes fee)', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                Text(
+                  '${enteredAmount.toStringAsFixed(8)} BTCS',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Estimated Fee', style: TextStyle(color: Colors.white60, fontSize: 12)),
+              Text(
+                '${fee.toStringAsFixed(8)} BTCS',
                 style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
             ],
@@ -1130,9 +1718,9 @@ class _SendViewState extends State<SendView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Estimated Fee', style: TextStyle(color: Colors.white60, fontSize: 12)),
+              const Text('Total Spend (est.)', style: TextStyle(color: Colors.white60, fontSize: 12)),
               Text(
-                '${fee.toStringAsFixed(8)} BTCS',
+                '${_satsToBtcs(totalSpendSats).toStringAsFixed(8)} BTCS',
                 style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
             ],
@@ -1170,6 +1758,66 @@ class _SendViewState extends State<SendView> {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubtractFeeTicker(
+    WalletProvider provider,
+    ({double fee, bool hasExactCoinControlFee, ({double fee, int? inputCount, bool amountAware}) simpleEstimate})
+        feeSnapshot,
+  ) {
+    final enteredAmount = double.tryParse(_amountController.text.trim()) ?? 0.0;
+    final effectiveAmount = enteredAmount > 0
+        ? _effectiveSendAmount(
+            provider: provider,
+            feeSnapshot: feeSnapshot,
+            enteredAmount: enteredAmount,
+          )
+        : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Subtract Fee From Amount',
+                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'ON: entered amount is total spend cap. OFF: recipient gets full entered amount.',
+                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Switch(
+            value: _subtractFeeFromAmount,
+            onChanged: _isSending ? null : (value) => setState(() => _subtractFeeFromAmount = value),
+          ),
+          if (_subtractFeeFromAmount && enteredAmount > 0) ...[
+            const SizedBox(width: 8),
+            Text(
+              'Net ${effectiveAmount > 0 ? effectiveAmount.toStringAsFixed(8) : '-'}',
+              style: TextStyle(
+                color: effectiveAmount > 0 ? Colors.greenAccent : Colors.redAccent,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1236,11 +1884,17 @@ class _SendViewState extends State<SendView> {
   Future<bool> _showPreSendConfirmDialog({
     required WalletProvider provider,
     required String toAddress,
+    required double enteredAmount,
     required double amount,
+    required bool subtractFeeFromAmount,
   }) async {
     final hasSelectedInputs = _advancedSend && provider.selectedUtxoCount > 0;
     final simpleEstimate = _estimateSimpleModeFee(provider);
     final estimatedFee = hasSelectedInputs ? provider.estimatedFee : simpleEstimate.fee;
+    final amountModeLabel = subtractFeeFromAmount
+        ? 'Fee included in entered amount'
+        : 'Fee added on top of entered amount';
+    final totalSpend = subtractFeeFromAmount ? enteredAmount : enteredAmount + estimatedFee;
 
     final agreed = await showDialog<bool>(
       context: context,
@@ -1255,9 +1909,28 @@ class _SendViewState extends State<SendView> {
             children: [
               Text('To: $toAddress', style: const TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(height: 8),
-              Text('Amount: ${amount.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.white70)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Amount Mode', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                  Text(
+                    amountModeLabel,
+                    style: TextStyle(
+                      color: subtractFeeFromAmount ? Colors.amberAccent : Colors.greenAccent,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text('Entered amount: ${enteredAmount.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 4),
+              Text('Recipient amount: ${amount.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.white70)),
               const SizedBox(height: 4),
               Text('Estimated fee: ${estimatedFee.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 4),
+              Text('Total spend (est.): ${totalSpend.toStringAsFixed(8)} BTCS', style: const TextStyle(color: Colors.white70)),
               const SizedBox(height: 4),
               Text('Fee source: ${_feeSourceLabel(provider)}', style: const TextStyle(color: Colors.white70)),
               const SizedBox(height: 4),
@@ -1689,6 +2362,9 @@ class _SendViewState extends State<SendView> {
                           ],
                         ),
 
+                        const SizedBox(height: 12),
+                        _buildSubtractFeeTicker(walletProvider, feeSnapshot),
+
                         const SizedBox(height: 10),
                         _buildFeeSourceSelector(walletProvider),
 
@@ -1776,7 +2452,7 @@ class _SendViewState extends State<SendView> {
 
                         // Information Text
                         const Text(
-                          'To send Bitcoin Silver, enter the recipient\'s bs1 or legacy address and the amount. Ensure you have enough balance to cover the transaction fee.',
+                          'To send BTCS, enter the recipient\'s bs1 or legacy address and the amount. Ensure you have enough balance to cover the transaction fee.',
                           style: TextStyle(color: Colors.white54),
                         ),
 

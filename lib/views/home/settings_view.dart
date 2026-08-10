@@ -650,6 +650,7 @@ class _SettingsViewState extends State<SettingsView> {
             newAddress,
             currentBalance,
             feeRate: wp.feeRate,
+            preferBatchSend: true,
             isSweep: true,
           );
 
@@ -658,9 +659,16 @@ class _SettingsViewState extends State<SettingsView> {
           }
 
           final txid = (sweepResult['txid'] ?? '').toString();
+          final batchTxids = (sweepResult['batchTxids'] as List<dynamic>? ?? [])
+              .map((e) => e.toString())
+              .where((id) => id.isNotEmpty)
+              .toList();
+          final primaryTxid = txid.isNotEmpty
+              ? txid
+              : (batchTxids.isNotEmpty ? batchTxids.first : '');
           await setProgressStage(
-            txid.isNotEmpty
-                ? 'Transaction broadcast (${txid.substring(0, 8)}...). Finalizing migration...'
+            primaryTxid.isNotEmpty
+                ? 'Transaction broadcast (${primaryTxid.substring(0, 8)}...). Finalizing migration...'
                 : 'Transaction broadcast. Finalizing migration...',
             minVisibleMs: 320,
           );
@@ -682,7 +690,15 @@ class _SettingsViewState extends State<SettingsView> {
 
         await _showMigrationTxSuccessDialog(
           context,
-          txid: (sweepResult['txid'] ?? '').toString(),
+          txid: (() {
+            final singleTxid = (sweepResult['txid'] ?? '').toString();
+            if (singleTxid.isNotEmpty) return singleTxid;
+            final batchTxids = (sweepResult['batchTxids'] as List<dynamic>? ?? [])
+                .map((e) => e.toString())
+                .where((id) => id.isNotEmpty)
+                .toList();
+            return batchTxids.isNotEmpty ? batchTxids.first : '';
+          })(),
           newAddress: newAddress,
           amount: currentBalance,
         );

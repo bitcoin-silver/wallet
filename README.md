@@ -33,15 +33,16 @@
 
 ### Latest Updates
 
+- Added "Subtract Fee from amount" toggle in send view
 - Chat has been removed due to a recent Google Play policy change/update
 - Refined Send fee UX with a clearer fee source selector (`Manual` vs `Auto (Node Fee)`) and active-state highlighting.
 - Simplified estimated fee card layout with clearer grouping: estimated fee, fee source, fee rate, and net send after fee (advanced input-selected mode).
 - Improved simple mode fee estimation to be amount-aware using confirmed UTXOs, producing more realistic estimates than a fixed baseline example.
 - Kept advanced mode fee behavior input-aware from selected UTXOs (coin control), so detailed estimates remain tied to selected inputs.
 
-- Upgraded to Flutter 3.44.4 • channel stable
-- Upgraded to Android Gradle Plugin (AGP) 9.6.0
-- Upgraded to Kotlin 2.4.0
+- Upgraded to Flutter 3.44.9 • channel stable
+- Upgraded to Android Gradle Plugin (AGP) 9.7.0
+- Upgraded to Kotlin 2.4.10
 - Migration Flow Hardening:
   - Added explicit migration warning + acknowledgment step before migration starts.
   - Added funded-wallet pre-check for smart fee availability and blocks migration when node fee estimation is unavailable.
@@ -169,7 +170,7 @@ Contributions are welcome! Please:
 
 For bugs or feature requests, please open an issue.
 
-Current Google Play version: 6.0
+Current Google Play version: 6.1
 
 <a href="https://play.google.com/store/apps/details?id=top.bitcoinsilver.wallet2025&pli=1">
     <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="60">

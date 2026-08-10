@@ -16,7 +16,6 @@ class _ReceiveViewState extends State<ReceiveView>
     with TickerProviderStateMixin {
   late AnimationController _qrAnimationController;
   late AnimationController _fadeController;
-  late Animation<double> _qrScaleAnimation;
   late Animation<double> _fadeAnimation;
   late Animation<double> _pulseAnimation;
 
@@ -33,14 +32,6 @@ class _ReceiveViewState extends State<ReceiveView>
       duration: const Duration(milliseconds: 1200), // Doubled from 600ms to 1200ms
       vsync: this,
     );
-
-    _qrScaleAnimation = Tween<double>(
-      begin: 0.98,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _qrAnimationController,
-      curve: Curves.easeInOut, // Changed to a smoother curve
-    ));
 
     // Fade animation for content
     _fadeController = AnimationController(
@@ -372,6 +363,7 @@ class _ReceiveViewState extends State<ReceiveView>
     final walletProvider = Provider.of<WalletProvider>(context);
     final address = walletProvider.address;
     final screenWidth = MediaQuery.of(context).size.width;
+    final qrSize = (screenWidth - 120).clamp(180.0, 340.0).toDouble();
 
     // Generate QR data with amount if requested
     String qrData = address ?? '';
@@ -590,81 +582,79 @@ class _ReceiveViewState extends State<ReceiveView>
 
                     // QR Code Container
                     if (address != null && address.isNotEmpty) ...[
-                      ScaleTransition(
-                        scale: _qrScaleAnimation,
-                        child: Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Colors.white,
-                                Colors.grey.shade100,
+                      Container(
+                        width: qrSize + 40,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.white,
+                              Colors.grey.shade100,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.blue.withValues(alpha: 0.3),
+                              blurRadius: 30,
+                              spreadRadius: 0,
+                              offset: const Offset(0, 10),
+                            ),
+                            BoxShadow(
+                              color: Colors.purple.withValues(alpha: 0.2),
+                              blurRadius: 20,
+                              spreadRadius: 0,
+                              offset: const Offset(0, -5),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            // Static QR (no animation) with responsive sizing
+                            Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                QrImageView(
+                                  data: qrData,
+                                  version: QrVersions.auto,
+                                  size: qrSize,
+                                  backgroundColor: Colors.transparent,
+                                  errorCorrectionLevel: QrErrorCorrectLevel.H,
+                                ),
+                                // Logo in center of QR
+                                Container(
+                                  width: 50,
+                                  height: 50,
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.black.withValues(alpha: 0.1),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Image.asset(
+                                    'assets/logo_big.png',
+                                    fit: BoxFit.contain,
+                                    cacheHeight: 100,
+                                    cacheWidth: 100,
+                                  ),
+                                ),
                               ],
                             ),
-                            borderRadius: BorderRadius.circular(24),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.blue.withValues(alpha: 0.3),
-                                blurRadius: 30,
-                                spreadRadius: 0,
-                                offset: const Offset(0, 10),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Scan to send BTCS',
+                              style: TextStyle(
+                                color: Colors.grey.shade700,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
                               ),
-                              BoxShadow(
-                                color: Colors.purple.withValues(alpha: 0.2),
-                                blurRadius: 20,
-                                spreadRadius: 0,
-                                offset: const Offset(0, -5),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              // QR Code with logo overlay
-                              Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  QrImageView(
-                                    data: qrData,
-                                    version: QrVersions.auto,
-                                    size: screenWidth - 120,
-                                    backgroundColor: Colors.transparent,
-                                    errorCorrectionLevel: QrErrorCorrectLevel.H,
-                                  ),
-                                  // Logo in center of QR
-                                  Container(
-                                    width: 50,
-                                    height: 50,
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: Colors.black.withValues(alpha: 0.1),
-                                        width: 2,
-                                      ),
-                                    ),
-                                    child: Image.asset(
-                                      'assets/logo_big.png',
-                                      fit: BoxFit.contain,
-                                      cacheHeight: 100,
-                                      cacheWidth: 100,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Scan to send BTCS',
-                                style: TextStyle(
-                                  color: Colors.grey.shade700,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
 
