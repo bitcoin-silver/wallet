@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
 import 'package:bitcoinsilver_wallet/providers/blockchain_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
+import 'package:bitcoinsilver_wallet/config.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:bitcoinsilver_wallet/widgets/app_background.dart';
@@ -19,11 +20,9 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
   bool _isLoadingSupply = false;
 
   // Volume data for exchanges
-  //String? _exbitronVolume;
   String? _nestexVolume;
   String? _qutradeVolume;
-  //String? _klingexVolume;
-  String? _bitstorageVolume;
+  String? _nonkycVolume;
 
   // Animation controllers
   late AnimationController _logoAnimationController;
@@ -81,11 +80,9 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
   }
 
   Future<void> _fetchAllVolumes() async {
-    //_fetchExbitronVolume();
     _fetchQutradeVolume();
     _fetchNestexVolume();
-    //_fetchKlingexVolume();
-    _fetchBitstorageVolume();
+    _fetchNonkycVolume();
   }
 
   Future<void> _fetchMoneySupply() async {
@@ -143,69 +140,7 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
       });
     }
   }
- /*
-  Future<void> _fetchExbitronVolume() async {
-    try {
-      final response = await http.get(
-        Uri.parse('https://api.exbitron.com/api/v1/trading/info/BTCS-USDT'),
-        headers: {'Accept': 'application/json'},
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('Request timeout');
-        },
-      );
 
-      if (response.statusCode == 200) {
-        // Check if response body is empty or invalid before parsing
-        if (response.body.trim().isEmpty) {
-          setState(() {
-            _exbitronVolume = 'Trade Now';
-          });
-          return;
-        }
-
-        try {
-          final data = jsonDecode(response.body);
-          if (data['status'] == 'OK' && data['data'] != null) {
-            // Convert to string first, then parse as double for consistency
-            final volume24h = double.tryParse(
-                data['data']['market']['marketDynamics']['volume24h'].toString()
-            ) ?? 0.0;
-
-            setState(() {
-              if (volume24h > 0) {
-                _exbitronVolume = '\$${volume24h.toStringAsFixed(2)}';
-              } else {
-                _exbitronVolume = 'Low Volume';
-              }
-            });
-          } else {
-            setState(() {
-              _exbitronVolume = 'Trade Now';
-            });
-          }
-        } on FormatException {
-          // Silent handling when JSON is invalid (exchange is down)
-          setState(() {
-            _exbitronVolume = 'Trade Now';
-          });
-        }
-      } else {
-        setState(() {
-          _exbitronVolume = 'Trade Now';
-        });
-      }
-    } catch (e) {
-      // Silent handling - exchange may be temporarily down
-      if (mounted) {
-        setState(() {
-          _exbitronVolume = 'Trade Now';
-        });
-      }
-    }
-  }
-*/
   Future<void> _fetchQutradeVolume() async {
     try {
       final response = await http.get(
@@ -286,63 +221,14 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
       });
     }
   }
-/*
-  Future<void> _fetchKlingexVolume() async {
+  Future<void> _fetchNonkycVolume() async {
     try {
       final response = await http.get(
-        Uri.parse('https://api.klingex.io/api/tickers'),
-        headers: {'Accept': 'application/json'},
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('Request timeout');
+        Uri.parse('${Config.nonkycApiUrl}/market/info?symbol=BTCS%2FUSDC'),
+        headers: {
+          'Accept': 'application/json',
+          'X-API-Key': Config.nonkycApiKey,
         },
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> tickers = jsonDecode(response.body);
-
-        // Find the BTCS_USDT pair in the list
-        final btcsTicker = tickers.firstWhere(
-              (ticker) => ticker['ticker_id'] == 'BTCS_USDT',
-          orElse: () => null,
-        );
-
-        if (btcsTicker != null) {
-          // target_volume is USDT volume
-          final usdtVolume = double.tryParse(btcsTicker['target_volume'].toString()) ?? 0.0;
-
-          setState(() {
-            // Show volume or indicate no trading if volume is 0
-            if (usdtVolume > 0) {
-              _klingexVolume = '\$${usdtVolume.toStringAsFixed(2)}';
-            } else {
-              _klingexVolume = 'Low Volume';
-            }
-          });
-        } else {
-          setState(() {
-            _klingexVolume = 'Data unavailable';
-          });
-        }
-      } else {
-        setState(() {
-          _klingexVolume = 'Data unavailable';
-        });
-      }
-    } catch (e) {
-      debugPrint('Error fetching KlingEx volume: $e');
-      setState(() {
-        _klingexVolume = 'Trade Now';
-      });
-    }
-  }
-*/
-  Future<void> _fetchBitstorageVolume() async {
-    try {
-      final response = await http.get(
-        Uri.parse('https://api.bitstorage.finance/v1/public/ticker?pair=BTCSUSDT'),
-        headers: {'Accept': 'application/json'},
       ).timeout(
         const Duration(seconds: 10),
         onTimeout: () {
@@ -352,35 +238,30 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['status'] == true && data['data'] != null) {
-          // Get the last price and 24h volume
-          final lastPrice = double.tryParse(data['data']['last'].toString()) ?? 0.0;
-          final volume24h = double.tryParse(data['data']['volume_24H'].toString()) ?? 0.0;
-
-          // Calculate volume in USD (volume * last price)
-          final usdtVolume = volume24h * lastPrice;
+        if (data['symbol'] == 'BTCS/USDC') {
+          final usdVolume = double.tryParse(data['volumeUsdNumber'].toString()) ?? 0.0;
 
           setState(() {
-            if (usdtVolume > 0) {
-              _bitstorageVolume = '\$${usdtVolume.toStringAsFixed(2)}';
+            if (usdVolume > 0) {
+              _nonkycVolume = '\$${usdVolume.toStringAsFixed(2)}';
             } else {
-              _bitstorageVolume = 'Low Volume';
+              _nonkycVolume = 'Low Volume';
             }
           });
         } else {
           setState(() {
-            _bitstorageVolume = 'Data unavailable';
+            _nonkycVolume = 'Data unavailable';
           });
         }
       } else {
         setState(() {
-          _bitstorageVolume = 'Data unavailable';
+          _nonkycVolume = 'Data unavailable';
         });
       }
     } catch (e) {
-      debugPrint('Error fetching Bitstorage volume: $e');
+      debugPrint('Error fetching NonKYC volume: $e');
       setState(() {
-        _bitstorageVolume = 'Trade Now';
+        _nonkycVolume = 'Trade Now';
       });
     }
   }
@@ -673,37 +554,36 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
                   // Exchange Cards
                   _buildExchangeCard(
                     context,
-                    name: 'NESTEX',
-                    url: 'https://trade.nestex.one/spot/BTCS_USDT',
-                    pair: 'BTCS/USDT',
-                    volume: _nestexVolume != null
-                        ? '24h Volume: $_nestexVolume'
+                    name: 'NONKYC',
+                    url: 'https://nonkyc.io/market/BTCS_USDC?ref=65477593e577cfc144c45844',
+                    pair: 'BTCS/USDC',
+                    volume: _nonkycVolume != null
+                        ? '24h Volume: $_nonkycVolume'
                         : 'Trade Now',
-                    icon: Icons.account_balance,
+                    icon: Icons.verified,
                     isPrimary: true,
                   ),
 
                   _buildExchangeCard(
                     context,
+                    name: 'NESTEX',
+                    url: 'https://trade.nestex.one/spot/BTCS_USDT?ref=FB4BBA1A84F3CD2B0E90536167A74353',
+                    pair: 'BTCS/USDT',
+                    volume: _nestexVolume != null
+                        ? '24h Volume: $_nestexVolume'
+                        : 'Trade Now',
+                    icon: Icons.account_balance,
+                  ),
+
+                  _buildExchangeCard(
+                    context,
                     name: 'QUTRADE',
-                    url: 'https://qutrade.io/en/?market=btcs_usdt',
+                    url: 'https://qutrade.io/en/?market=btcs_usdt&ref=52336',
                     pair: 'BTCS/USDT',
                     volume: _qutradeVolume != null
                         ? '24h Volume: $_qutradeVolume'
                         : 'Trade Now',
                     icon: Icons.trending_up,
-                    //isNew: true,
-                  ),
-
-                  _buildExchangeCard(
-                    context,
-                    name: 'BITSTORAGE',
-                    url: 'https://bitstorage.finance/spot/trading/BTCSUSDT?interface=classic',
-                    pair: 'BTCS/USDT',
-                    volume: _bitstorageVolume != null
-                        ? '24h Volume: $_bitstorageVolume'
-                        : 'Trade Now',
-                    icon: Icons.storage,
                   ),
 
                   const SizedBox(height: 30),

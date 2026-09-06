@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'package:bitcoinsilver_wallet/providers/addressbook_provider.dart';
+import 'package:bitcoinsilver_wallet/views/home/scanner_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/app_background.dart';
 
 class AddressbookView extends StatefulWidget {
@@ -95,15 +96,30 @@ class _AddressbookViewState extends State<AddressbookView> {
     _showSnack('Address copied to clipboard.');
   }
 
+  Future<void> _scanAddress() async {
+    final scannedAddress = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ScannerView(),
+      ),
+    );
+
+    if (scannedAddress != null && mounted) {
+      setState(() {
+        _addressController.text = scannedAddress;
+      });
+    }
+  }
+
   Future<void> _importContacts() async {
     final provider = context.read<AddressbookProvider>();
     try {
-      FilePickerResult? result = await FilePicker.pickFiles(
+      PlatformFile? fileResult = await FilePicker.pickFile(
         type: FileType.any,
       );
 
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
+      if (fileResult != null && fileResult.path != null) {
+        final file = File(fileResult.path!);
         final bytes = await file.readAsBytes();
         final content = utf8.decode(bytes, allowMalformed: false);
         final importResult = await provider.importFromBtcsJson(content);
@@ -130,13 +146,13 @@ class _AddressbookViewState extends State<AddressbookView> {
       final jsonString = provider.exportToBtcsJson();
       final bytes = Uint8List.fromList(utf8.encode(jsonString));
 
-      String? outputPath = await FilePicker.saveFile(
+      dynamic outputResult = await FilePicker.saveFile(
         dialogTitle: 'Export Address Book',
         fileName: 'BTCS_contacts.btcs',
         bytes: bytes,
       );
 
-      if (mounted && outputPath != null && outputPath.isNotEmpty) {
+      if (mounted && outputResult != null) {
         _showSnack('Address book exported.');
       }
     } catch (e) {
@@ -270,9 +286,14 @@ class _AddressbookViewState extends State<AddressbookView> {
             enabled: !_isBusy,
             keyboardType: TextInputType.text,
             textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Address',
               hintText: 'bs1...',
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.qr_code_scanner, color: Colors.cyanAccent),
+                tooltip: 'Scan QR code',
+                onPressed: _isBusy ? null : _scanAddress,
+              ),
             ),
           ),
           const SizedBox(height: 12),

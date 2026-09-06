@@ -105,7 +105,7 @@ class SupportView extends StatelessWidget {
                 icon: Icons.chat,
                 title: 'Discord',
                 subtitle: 'Join our Discord server',
-                url: 'https://discord.gg/Pbt2R55XBt',
+                url: 'https://discord.gg/wCmdJGXFr7',
                 color: const Color(0xFF5865F2),
               ),
 

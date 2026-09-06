@@ -16,7 +16,7 @@ if (keystorePropertiesFile.exists()) {
 
 extensions.configure<ApplicationExtension> {
     namespace = "top.bitcoinsilver.wallet2025"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -29,8 +29,8 @@ extensions.configure<ApplicationExtension> {
         applicationId = "top.bitcoinsilver.wallet2025"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 82
-        versionName = "BTCS-W-6.1"
+        versionCode = 86
+        versionName = "BTCS-W-6.3"
     }
 
     signingConfigs {
@@ -52,8 +52,8 @@ extensions.configure<ApplicationExtension> {
     }
 
     lint {
-        checkReleaseBuilds = false
-        abortOnError = false
+        checkReleaseBuilds = true
+        abortOnError = true
     }
 }
 
@@ -64,4 +64,10 @@ dependencies {
 
 flutter {
     source = "../.."
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }

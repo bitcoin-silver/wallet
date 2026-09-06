@@ -19,4 +19,8 @@ class Config {
   // Backend API Configuration
   static const String apiBaseUrl = 'https://bitcoinsilver.eu';
   static const String apiKey = String.fromEnvironment('NOTIFICATION_API_KEY', defaultValue: '');
+
+  // NonKYC Exchange API Configuration
+  static const String nonkycApiUrl = 'https://api.nonkyc.io/api/v2';
+  static const String nonkycApiKey = String.fromEnvironment('NONKYC_API_KEY', defaultValue: '');
 }

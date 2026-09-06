@@ -76,13 +76,22 @@ class BiometricService {
 
       final result = await _localAuth.authenticate(
         localizedReason: localizedReason,
-        options: const AuthenticationOptions(
-          stickyAuth: true,
-          biometricOnly: false,  // Allow PIN/password/pattern fallback
-          sensitiveTransaction: true,
-        ),
+        persistAcrossBackgrounding: true,
+        biometricOnly: false, // Allow PIN/password/pattern fallback
+        sensitiveTransaction: true,
       );
       return result;
+    } on LocalAuthException catch (e) {
+      // Handle specific errors
+      switch (e.code) {
+        case LocalAuthExceptionCode.noBiometricHardware:
+        case LocalAuthExceptionCode.noBiometricsEnrolled:
+        case LocalAuthExceptionCode.noCredentialsSet:
+          // Biometric not available, allow access
+          return true;
+        default:
+          return false;
+      }
     } on PlatformException catch (e) {
       // Handle specific errors
       if (e.code == 'NotAvailable' || e.code == 'NotEnrolled') {
