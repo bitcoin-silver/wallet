@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera access is used to scan QR codes for wallet addresses and payment requests.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID is used to securely unlock your wallet and authorize transactions.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

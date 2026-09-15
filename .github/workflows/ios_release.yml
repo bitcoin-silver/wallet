@@ -1,0 +1,122 @@
+name: iOS Release Build
+
+on:
+  workflow_dispatch: # Manual trigger only, until the pipeline is verified end-to-end
+
+jobs:
+  build:
+    name: Build & Upload iOS IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Write dart_defines.json
+        env:
+          RPC_URL: ${{ secrets.RPC_URL }}
+          RPC_USER: ${{ secrets.RPC_USER }}
+          RPC_PASSWORD: ${{ secrets.RPC_PASSWORD }}
+          NOTIFICATION_API_KEY: ${{ secrets.NOTIFICATION_API_KEY }}
+          LIVECOINWATCH_API_KEY: ${{ secrets.LIVECOINWATCH_API_KEY }}
+          NONKYC_API_KEY: ${{ secrets.NONKYC_API_KEY }}
+        run: |
+          cat > dart_defines.json << EOF
+          {
+            "RPC_URL": "$RPC_URL",
+            "RPC_USER": "$RPC_USER",
+            "RPC_PASSWORD": "$RPC_PASSWORD",
+            "NOTIFICATION_API_KEY": "$NOTIFICATION_API_KEY",
+            "LIVECOINWATCH_API_KEY": "$LIVECOINWATCH_API_KEY",
+            "NONKYC_API_KEY": "$NONKYC_API_KEY"
+          }
+          EOF
+
+      - name: Import signing certificate and provisioning profile
+        env:
+          IOS_DIST_CERT_P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          CERT_PATH=$RUNNER_TEMP/dist_cert.p12
+          PROFILE_PATH=$RUNNER_TEMP/profile.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+
+          echo -n "$IOS_DIST_CERT_P12_BASE64" | base64 --decode -o $CERT_PATH
+          echo -n "$IOS_PROVISION_PROFILE_BASE64" | base64 --decode -o $PROFILE_PATH
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security import $CERT_PATH -P "$IOS_DIST_CERT_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH login.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+
+          PROFILE_NAME=$(security cms -D -i $PROFILE_PATH | plutil -extract Name xml1 -o - - | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')
+          echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
+
+      - name: Create ExportOptions.plist
+        env:
+          TEAM_ID: ${{ secrets.APPSTORE_TEAM_ID }}
+        run: |
+          cat > $RUNNER_TEMP/ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>top.bitcoinsilver.bitcoinsilverWallet</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Build signed IPA
+        run: |
+          flutter build ipa --release \
+            --export-options-plist=$RUNNER_TEMP/ExportOptions.plist \
+            --dart-define-from-file=dart_defines.json
+
+      - name: Upload to TestFlight
+        env:
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$APPSTORE_API_PRIVATE_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8
+
+          xcrun altool --upload-app \
+            -f build/ios/ipa/*.ipa \
+            -t ios \
+            --apiKey "$APPSTORE_API_KEY_ID" \
+            --apiIssuer "$APPSTORE_API_ISSUER_ID"
+
+      - name: Upload IPA artifact (for reference/debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: build/ios/ipa/*.ipa
+          if-no-files-found: ignore
