@@ -51,5 +51,9 @@
 	<string>Face ID is used to securely unlock your wallet and authorize transactions.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

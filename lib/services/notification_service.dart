@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 // Keys for local storage
 const String _registeredTokenKey = 'fcm_registered_token';
@@ -253,7 +254,7 @@ class NotificationService {
         body: json.encode({
           'address': address,
           'device_token': deviceToken,
-          'platform': 'android',
+          'platform': Platform.isIOS ? 'ios' : 'android',
         }),
       );
 
