@@ -9,6 +9,7 @@ import 'package:bitcoinsilver_wallet/providers/addressbook_provider.dart';
 import 'package:bitcoinsilver_wallet/services/file_export_service.dart';
 import 'package:bitcoinsilver_wallet/services/payment_request.dart';
 import 'package:bitcoinsilver_wallet/views/home/scanner_view.dart';
+import 'package:bitcoinsilver_wallet/views/home/send_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/app_background.dart';
 
 class AddressbookView extends StatefulWidget {
@@ -93,6 +94,14 @@ class _AddressbookViewState extends State<AddressbookView> {
     _showSnack('Address removed.');
   }
 
+  void _sendTo(String address) {
+    HapticFeedback.lightImpact();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => SendView(initialRecipient: address)),
+    );
+  }
+
   void _copyAddress(String address) {
     Clipboard.setData(ClipboardData(text: address));
     _showSnack('Address copied to clipboard.');
@@ -109,10 +118,17 @@ class _AddressbookViewState extends State<AddressbookView> {
     if (scanned is! String || !mounted) return;
     try {
       final request = PaymentRequest.fromText(scanned);
+      final label = request.label;
+      // A scanned name is untrusted: never suggest one that already belongs
+      // to another contact, which would create a look-alike entry.
+      final nameTaken = label != null &&
+          context.read<AddressbookProvider>().entries.any((e) =>
+              PaymentRequest.sanitizeText(e.label).toLowerCase() ==
+              PaymentRequest.sanitizeText(label).toLowerCase());
       setState(() {
         _addressController.text = request.address;
         // e.g. a miner's QR "bitcoinsilver:bs1...?label=miner-3"
-        if (_labelController.text.trim().isEmpty && request.label != null) {
+        if (_labelController.text.trim().isEmpty && request.label != null && !nameTaken) {
           _labelController.text = request.label!.length <= AddressbookProvider.maxLabelLength
               ? request.label!
               : request.label!.substring(0, AddressbookProvider.maxLabelLength);
@@ -250,9 +266,18 @@ class _AddressbookViewState extends State<AddressbookView> {
             : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Same as the web wallet's Contacts tab: open Send with
+                  // this address filled in.
+                  IconButton(
+                    icon: const Icon(Icons.send_rounded, color: Colors.cyanAccent),
+                    tooltip: 'Send to this address',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _isBusy ? null : () => _sendTo(entry.address),
+                  ),
                   IconButton(
                     icon: const Icon(Icons.edit, color: Colors.white70),
                     tooltip: 'Edit',
+                    visualDensity: VisualDensity.compact,
                     onPressed:
                         _isBusy ? null : () => _startEdit(entry.label, entry.address),
                   ),
@@ -262,6 +287,7 @@ class _AddressbookViewState extends State<AddressbookView> {
                       color: Colors.redAccent,
                     ),
                     tooltip: 'Delete',
+                    visualDensity: VisualDensity.compact,
                     onPressed: _isBusy ? null : () => _deleteEntry(entry.address),
                   ),
                 ],

@@ -6,6 +6,29 @@ All notable changes to the Bitcoin Silver Android wallet are documented in this 
 
 - No unreleased changes yet.
 
+## [6.4.1] - Play Store versionCode 89, iOS build 6.4.1+5
+
+Matches web wallet 3.1.1 (same payment request safety rules).
+
+### Security
+
+- Payment requests: the name in a request is shown as "Name given in the request (not verified)". "Saved contact: …" appears only when the address matches a saved contact.
+- A request that uses the name of a saved contact for a different address shows a red warning.
+- Control, zero-width and direction-override characters (such as U+202E) are removed from a request's name and note; long notes are shortened by character, so emoji are never cut in half.
+- Scanning a QR code into the address book no longer suggests a name that another contact already has.
+- The request card reminds you to pay only requests from people you trust.
+
+### Fixed
+
+- Startup: the start screen waited for all network loading, one step after the other (RPC check up to 4 seconds, then explorer history and balance with no time limit), so it was sometimes short and sometimes long. It now waits only for the wallet to load from the device; history and balance load in parallel afterwards while the wallet screen shows its loading placeholders.
+- Returning to the app showed "No Transactions Yet" for a moment: a background refresh emptied the list before asking the explorer, and left it empty if the request failed. The list now stays on screen and is replaced only when fresh data arrives.
+- Fingerprint lock now covers every screen. Before, returning to the app locked only the home screen: a screen opened on top of it (Send, Receive, Settings, a dialog) stayed visible and usable without unlocking. The lock is now shown on top of everything, the back button cannot close it, and the screen you were on comes back unchanged after unlocking.
+- With fingerprint lock on, resuming also rebuilt the whole home screen, so its refresh could be skipped and its state was reset. The home screen now stays in place under the lock and refreshes while you unlock.
+
+### Added
+
+- Address book: each contact has a Send button that opens Send with the address filled in, like the web wallet's Contacts tab.
+
 ## [6.4] - Play Store versionCode 88, iOS build 6.4.0+4
 
 (versionCode 87 was an internal test upload of the same code, built without stripping debug info. The README's bundle command now passes `--extra-gen-snapshot-options=--strip`.)

@@ -35,7 +35,15 @@
 
 ### Latest Updates
 
-Version 6.4 (details in [CHANGELOG.md](CHANGELOG.md)), released together with web wallet 3.1:
+Version 6.4.1 (details in [CHANGELOG.md](CHANGELOG.md)), together with web wallet 3.1.1:
+
+- Faster start: the app no longer waits for the servers before showing the wallet; history and balance load in the background.
+- Returning to the app keeps the transaction list on screen while it refreshes (no more brief "No Transactions Yet").
+- Fingerprint lock covers every screen when returning to the app, including Send, Receive and Settings.
+- Payment requests: the name in a request is marked as not verified, a warning appears when a request borrows a saved contact's name, and hidden characters are removed.
+- Address book: each contact has a Send button.
+
+Version 6.4, released together with web wallet 3.1:
 
 - Scanning a payment request now fills in the amount, not only the address, and shows the request's note.
 - Payment requests shared from the Receive screen include a web wallet link.

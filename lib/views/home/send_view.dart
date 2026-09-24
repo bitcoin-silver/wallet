@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'package:bitcoinsilver_wallet/models/addressbook_entry.dart';
+import 'package:bitcoinsilver_wallet/providers/addressbook_provider.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
 import 'package:bitcoinsilver_wallet/services/payment_request.dart';
 import 'package:bitcoinsilver_wallet/views/home/addressbook_view.dart';
@@ -10,7 +11,10 @@ import 'package:bitcoinsilver_wallet/views/home/scanner_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
 
 class SendView extends StatefulWidget {
-  const SendView({super.key});
+  /// Recipient to start with, e.g. when opened from an address book contact.
+  final String? initialRecipient;
+
+  const SendView({super.key, this.initialRecipient});
 
   @override
   State<SendView> createState() => _SendViewState();
@@ -104,6 +108,14 @@ class _SendViewState extends State<SendView> {
   @override
   void initState() {
     super.initState();
+    final initialRecipient = widget.initialRecipient?.trim();
+    if (initialRecipient != null && initialRecipient.isNotEmpty) {
+      _addressController.text = initialRecipient;
+      // Validate once the screen is built (setState needs a mounted widget).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scheduleAddressValidation(initialRecipient);
+      });
+    }
     // Fetch fresh balance on init
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _refreshBalance();
@@ -164,17 +176,36 @@ class _SendViewState extends State<SendView> {
     setState(() => _activeRequest = request.isPlainAddress ? null : request);
   }
 
+  static String _labelKey(String label) => PaymentRequest.sanitizeText(label).toLowerCase();
+
+  // The label and note are written by whoever made the request, so they are
+  // shown as unverified. Only the address book can vouch for a name: it is
+  // shown when the address matches a saved contact, and a request that
+  // borrows a saved contact's name for another address gets a warning.
+  // Same rules as the web wallet.
   Widget _buildActiveRequestCard(PaymentRequest request) {
     final requested = request.amountSats;
     final entered = PaymentRequest.parseAmount(_amountController.text);
     final amountChanged = requested != null && entered != requested;
+    final contacts = Provider.of<AddressbookProvider>(context).entries;
+    AddressbookEntry? savedContact;
+    AddressbookEntry? nameTwin;
+    for (final c in contacts) {
+      if (savedContact == null && _normalizeForMatch(c.address) == request.address) savedContact = c;
+      if (nameTwin == null && request.label != null && _labelKey(c.label) == _labelKey(request.label!)) {
+        nameTwin = c;
+      }
+    }
+    final impersonates = nameTwin != null && _normalizeForMatch(nameTwin.address) != request.address;
+    final showClaimedName = request.label != null && (savedContact == null || nameTwin != savedContact);
+    final accent = impersonates ? Colors.redAccent : Colors.cyanAccent;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
       decoration: BoxDecoration(
-        color: Colors.cyanAccent.withValues(alpha: 0.08),
+        color: accent.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.4)),
+        border: Border.all(color: accent.withValues(alpha: impersonates ? 0.8 : 0.4)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -191,19 +222,43 @@ class _SendViewState extends State<SendView> {
                       : 'Payment request: ${PaymentRequest.formatAmount(requested)} BTCS',
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                 ),
-                if (request.label != null) ...[
+                if (savedContact != null) ...[
                   const SizedBox(height: 4),
-                  Text('To: ${request.label}', style: const TextStyle(color: Colors.white70)),
+                  Row(
+                    children: [
+                      const Icon(Icons.verified_user, size: 14, color: Colors.greenAccent),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text('Saved contact: ${savedContact.label}',
+                            style: const TextStyle(color: Colors.greenAccent)),
+                      ),
+                    ],
+                  ),
+                ],
+                if (showClaimedName) ...[
+                  const SizedBox(height: 4),
+                  Text('Name given in the request (not verified): ${request.label}',
+                      style: const TextStyle(color: Colors.white70)),
+                ],
+                if (impersonates) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '⚠ This request uses the name "${nameTwin.label}", but it is NOT the address you saved '
+                    'for ${nameTwin.label}. Do not pay unless you are sure who sent it.',
+                    style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
+                  ),
                 ],
                 if (request.message != null) ...[
                   const SizedBox(height: 4),
-                  Text('Note: ${request.message}', style: const TextStyle(color: Colors.white70)),
+                  Text('Note from the requester: ${request.message}',
+                      style: const TextStyle(color: Colors.white70)),
                 ],
                 const SizedBox(height: 6),
                 Text(
                   amountChanged
                       ? 'The amount below differs from the requested amount.'
-                      : 'Check the address and amount before sending. The note is not sent.',
+                      : 'Only pay requests from people you trust. Check the address and amount '
+                          'before sending. The note is not sent.',
                   style: TextStyle(
                     fontSize: 12,
                     color: amountChanged ? Colors.amberAccent : Colors.white54,

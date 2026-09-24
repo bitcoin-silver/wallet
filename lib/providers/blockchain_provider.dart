@@ -34,11 +34,11 @@ class BlockchainProvider with ChangeNotifier {
       _startIndex = 0;
       _hasMore = true;
       notifyListeners();
-    } else {
-      // For silent refresh, we reset index to fetch latest page in background
-        _transactions.clear(); // still clear on silent refresh, just skip the loading UI
-        _startIndex = 0;
     }
+    // A silent refresh (app resume, timer, notification) keeps the current
+    // list on screen; fetchTransactions replaces it only once fresh data has
+    // arrived. Clearing here made the wallet show "No Transactions Yet"
+    // until the explorer answered, and kept it empty if the request failed.
 
     await fetchTransactions(address, silent: silent);
     _timestamp = formattedDate;
@@ -120,8 +120,16 @@ class BlockchainProvider with ChangeNotifier {
         if (data is Map && data.containsKey('transactions')) {
           final List<dynamic> txsList = data['transactions'] ?? [];
 
-          // Implement client-side pagination
-          List<dynamic> paginatedTxs = txsList.skip(_startIndex).take(_limit).toList();
+          // Implement client-side pagination. A silent refresh always takes
+          // the newest page and replaces the list in one step.
+          final start = silent ? 0 : _startIndex;
+          List<dynamic> paginatedTxs = txsList.skip(start).take(_limit).toList();
+
+          if (silent) {
+            _transactions.clear();
+            _startIndex = 0;
+            _hasMore = true;
+          }
 
           if (paginatedTxs.isEmpty) {
             _hasMore = false;
@@ -130,13 +138,9 @@ class BlockchainProvider with ChangeNotifier {
                 paginatedTxs.whereType<Map<String, dynamic>>().toList();
             List<Map<String, dynamic>> transactions =
                 convertNewApiFormat(castedData);
-            
-            if (silent) {
-              _transactions.clear();
-            }
-            
+
             _transactions.addAll(transactions);
-            _startIndex += _limit;
+            _startIndex = start + _limit;
 
             // Check if we've reached the end
             if (_startIndex >= txsList.length) {

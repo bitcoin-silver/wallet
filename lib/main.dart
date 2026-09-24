@@ -1,4 +1,6 @@
 // main.dart - Fixed for Flutter 3.35.3
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -84,29 +86,45 @@ void main() async {
   );
 }
 
+// The start screen only waits for the wallet to load from secure storage
+// (local and fast). Network loading used to run here too, one step after the
+// other (RPC check up to 4 s, then explorer history and UTXOs without a time
+// limit), so the spinner lasted as long as the slowest server. It now runs in
+// the background while the wallet screen shows its loading skeleton.
 Future<void> _bootstrapApp(
   WalletProvider wp,
   BlockchainProvider bp,
 ) async {
   try {
     await wp.loadWallet();
-    final rpcReachable = await _configureRpcConnection(wp);
-
-    if (wp.address != null) {
-      final futures = <Future<void>>[
-        bp.loadBlockchain(wp.address),
-      ];
-
-      // RPC affects UTXO/balance fetching, but explorer history can still load.
-      if (rpcReachable) {
-        futures.add(wp.fetchUtxos(force: true));
-      }
-
-      await Future.wait(futures);
-    }
   } catch (e) {
     if (kDebugMode) {
-      debugPrint('Startup bootstrap failed: $e');
+      debugPrint('Startup wallet load failed: $e');
+    }
+    return;
+  }
+  unawaited(_initialNetworkSync(wp, bp));
+}
+
+Future<void> _initialNetworkSync(
+  WalletProvider wp,
+  BlockchainProvider bp,
+) async {
+  if (wp.address == null) return;
+  try {
+    await Future.wait([
+      // Explorer history does not depend on the RPC server.
+      bp.loadBlockchain(wp.address),
+      // RPC check and balance, in parallel with the history.
+      () async {
+        if (await _configureRpcConnection(wp)) {
+          await wp.fetchUtxos(force: true);
+        }
+      }(),
+    ]);
+  } catch (e) {
+    if (kDebugMode) {
+      debugPrint('Initial network sync failed: $e');
     }
   }
 }
