@@ -114,7 +114,7 @@ class SupportView extends StatelessWidget {
                 icon: Icons.send,
                 title: 'Telegram',
                 subtitle: 'Follow us on Telegram',
-                url: 'https://t.me/official_bitcoinsilver',
+                url: 'https://t.me/official_bitcoin_silver',
                 color: const Color(0xFF0088CC),
               ),
 

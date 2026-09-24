@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import 'package:bitcoinsilver_wallet/providers/addressbook_provider.dart';
 import 'package:bitcoinsilver_wallet/services/file_export_service.dart';
+import 'package:bitcoinsilver_wallet/services/payment_request.dart';
 import 'package:bitcoinsilver_wallet/views/home/scanner_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/app_background.dart';
 
@@ -98,16 +99,28 @@ class _AddressbookViewState extends State<AddressbookView> {
   }
 
   Future<void> _scanAddress() async {
-    final scannedAddress = await Navigator.push(
+    final scanned = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => const ScannerView(),
       ),
     );
 
-    if (scannedAddress != null && mounted) {
+    if (scanned is! String || !mounted) return;
+    try {
+      final request = PaymentRequest.fromText(scanned);
       setState(() {
-        _addressController.text = scannedAddress;
+        _addressController.text = request.address;
+        // e.g. a miner's QR "bitcoinsilver:bs1...?label=miner-3"
+        if (_labelController.text.trim().isEmpty && request.label != null) {
+          _labelController.text = request.label!.length <= AddressbookProvider.maxLabelLength
+              ? request.label!
+              : request.label!.substring(0, AddressbookProvider.maxLabelLength);
+        }
+      });
+    } on FormatException {
+      setState(() {
+        _addressController.text = ScannerView.addressPart(scanned);
       });
     }
   }

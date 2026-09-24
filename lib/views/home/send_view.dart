@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 import 'package:bitcoinsilver_wallet/models/addressbook_entry.dart';
 import 'package:bitcoinsilver_wallet/providers/wallet_provider.dart';
+import 'package:bitcoinsilver_wallet/services/payment_request.dart';
 import 'package:bitcoinsilver_wallet/views/home/addressbook_view.dart';
 import 'package:bitcoinsilver_wallet/views/home/scanner_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/button_widget.dart';
@@ -30,6 +31,10 @@ class _SendViewState extends State<SendView> {
   bool? _addressValid;
   bool _isValidatingAddress = false;
   Timer? _addressDebounce;
+
+  // Payment request being paid (scanned or pasted bitcoinsilver: URI or
+  // web payment link). Its note is only shown, never sent.
+  PaymentRequest? _activeRequest;
 
   int _btcsToSats(double amount) => (amount * _satsPerBtcs).round();
   double _satsToBtcs(int sats) => sats / _satsPerBtcs;
@@ -121,6 +126,107 @@ class _SendViewState extends State<SendView> {
     await walletProvider.fetchUtxos(force: true);
   }
 
+  // Recipient field changes: a pasted payment request is split into address
+  // and amount; anything else is validated as an address.
+  void _onAddressChanged(String value) {
+    if (PaymentRequest.looksLikeUri(value)) {
+      _applyScannedOrPasted(value);
+      return;
+    }
+    _scheduleAddressValidation(value);
+  }
+
+  // Reads a scan or paste. Unreadable requests fall back to the address part,
+  // as the scanner did before, and say why.
+  void _applyScannedOrPasted(String raw) {
+    try {
+      _applyPaymentRequest(PaymentRequest.fromText(raw));
+    } on FormatException catch (e) {
+      final address = ScannerView.addressPart(raw);
+      setState(() => _addressController.text = address);
+      _scheduleAddressValidation(address);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.red.shade800,
+      ));
+    }
+  }
+
+  void _applyPaymentRequest(PaymentRequest request) {
+    setState(() {
+      _addressController.text = request.address;
+      if (request.amountSats != null) {
+        _amountController.text = PaymentRequest.formatAmount(request.amountSats!);
+      }
+    });
+    _scheduleAddressValidation(request.address);
+    setState(() => _activeRequest = request.isPlainAddress ? null : request);
+  }
+
+  Widget _buildActiveRequestCard(PaymentRequest request) {
+    final requested = request.amountSats;
+    final entered = PaymentRequest.parseAmount(_amountController.text);
+    final amountChanged = requested != null && entered != requested;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
+      decoration: BoxDecoration(
+        color: Colors.cyanAccent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.request_quote, color: Colors.cyanAccent),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  requested == null
+                      ? 'Payment request'
+                      : 'Payment request: ${PaymentRequest.formatAmount(requested)} BTCS',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                ),
+                if (request.label != null) ...[
+                  const SizedBox(height: 4),
+                  Text('To: ${request.label}', style: const TextStyle(color: Colors.white70)),
+                ],
+                if (request.message != null) ...[
+                  const SizedBox(height: 4),
+                  Text('Note: ${request.message}', style: const TextStyle(color: Colors.white70)),
+                ],
+                const SizedBox(height: 6),
+                Text(
+                  amountChanged
+                      ? 'The amount below differs from the requested amount.'
+                      : 'Check the address and amount before sending. The note is not sent.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: amountChanged ? Colors.amberAccent : Colors.white54,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18, color: Colors.white54),
+            tooltip: 'Dismiss request',
+            onPressed: () => setState(() => _activeRequest = null),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _normalizeForMatch(String address) {
+    final lower = address.trim().toLowerCase();
+    return lower.startsWith('bs1') ? lower : address.trim();
+  }
+
   void _scheduleAddressValidation(String rawValue) {
     _addressDebounce?.cancel();
     final value = rawValue.trim();
@@ -129,6 +235,10 @@ class _SendViewState extends State<SendView> {
       _addressValid = null;
       _isValidatingAddress = value.isNotEmpty;
       _errorMessage = '';
+      // The request card must never describe a different recipient.
+      if (_activeRequest != null && _normalizeForMatch(value) != _activeRequest!.address) {
+        _activeRequest = null;
+      }
     });
 
     if (value.isEmpty) {
@@ -516,6 +626,7 @@ class _SendViewState extends State<SendView> {
         _amountController.clear();
         _isChecked = false;
         _addressValid = null;
+        _activeRequest = null;
         _errorMessage = '';
         _advancedSend = false;
         _subtractFeeFromAmount = false;
@@ -2227,10 +2338,12 @@ class _SendViewState extends State<SendView> {
 
                         const SizedBox(height: 16),
 
+                        if (_activeRequest != null) _buildActiveRequestCard(_activeRequest!),
+
                         // Recipient Address Field
                         TextField(
                           controller: _addressController,
-                          onChanged: _scheduleAddressValidation,
+                          onChanged: _onAddressChanged,
                           enabled: !_isSending,
                           keyboardType: TextInputType.text,
                           textInputAction: TextInputAction.done,
@@ -2272,17 +2385,14 @@ class _SendViewState extends State<SendView> {
                                 IconButton(
                                   icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
                                   onPressed: _isSending ? null : () async {
-                                    final scannedAddress = await Navigator.push(
+                                    final scanned = await Navigator.push(
                                       context,
                                       MaterialPageRoute(
                                         builder: (context) => const ScannerView(),
                                       ),
                                     );
-                                    if (scannedAddress != null) {
-                                      setState(() {
-                                        _addressController.text = scannedAddress;
-                                      });
-                                      _scheduleAddressValidation(scannedAddress);
+                                    if (scanned is String && mounted) {
+                                      _applyScannedOrPasted(scanned);
                                     }
                                   },
                                 ),

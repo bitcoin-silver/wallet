@@ -25,13 +25,23 @@
 - **Send and Receive**: Seamless BTCS transfers for both legacy and SegWit destination types.
 - **BTCS Address Compatibility**: Supports BTCS Bech32 (`bs1...`) and legacy Base58 address handling in signer and send flow.
 - **Address Validation Improvements**: Debounced validation, scanner/address-book parity, and resilient fallback validation for BTCS RPC edge cases.
-- **QR Code Scanning**: Supports BIP21 URI format for easy transfers.
+- **QR Code Scanning**: Reads BIP21 payment requests (`bitcoinsilver:<address>?amount=..&message=..`) and fills in both the address and the amount.
+- **Payment Requests**: Request an amount with a QR code or a shared message that includes a link for the [web wallet](https://bitcoinsilver.top/web-wallet/). Requests can also be pasted into the Send screen.
+- **Address Book**: Labelled contacts with `.btcs` import/export, compatible with the web wallet.
 - **Transaction Tracking**: Real-time history with smart confirmation tracking and pending-state management.
 - **Smart Pending Handling**: Tracks local pending spends, avoids double-spend UTXO reuse, and keeps balances accurate during mempool transitions.
 - **Biometric Security**: Protect your wallet and recovery phrase with fingerprint or face recognition.
 - **Secure Storage**: Sensitive keys and mnemonics are stored in encrypted secure storage.
 
 ### Latest Updates
+
+Version 6.4 (details in [CHANGELOG.md](CHANGELOG.md)), released together with web wallet 3.1:
+
+- Scanning a payment request now fills in the amount, not only the address, and shows the request's note.
+- Payment requests shared from the Receive screen include a web wallet link.
+- Fixed: exporting the address book over an older file could leave part of the old file behind, making it impossible to import.
+
+Earlier:
 
 - Qr code scanner added to Address Book
 - Added "Subtract Fee from amount" toggle in send view
@@ -114,7 +124,12 @@ For custom RPC node, create `dart_defines.json`:
 flutter build apk --release --dart-define-from-file=dart_defines.json
 
 # Android App Bundle (Play Store)
+# --extra-gen-snapshot-options=--strip removes the DWARF debug info that newer
+# Flutter otherwise leaves in the native library (it would partly undo
+# --obfuscate). `flutter build` has no --strip flag of its own. The symbols
+# needed to read crash reports are still written to --split-debug-info.
 flutter build appbundle --release --obfuscate \
+  --extra-gen-snapshot-options=--strip \
   --split-debug-info=build/app/outputs/symbols \
   --dart-define-from-file=dart_defines.json
 
@@ -126,6 +141,11 @@ Output locations:
 
 - APK: `build/app/outputs/flutter-apk/app-release.apk`
 - AAB: `build/app/outputs/bundle/release/app-release.aab`
+- Debug symbols (upload to Play Console for readable crash reports): `build/app/outputs/symbols`
+
+With `--extra-gen-snapshot-options=--strip`, Flutter (3.47) ends the bundle build with "Release app bundle failed to strip debug symbols from native libraries" and exit code 1, although the `.aab` is complete, signed and stripped. Its check expects a debug-symbol entry for `libapp.so`, which `--strip` intentionally leaves empty. Check that `build/app/outputs/bundle/release/app-release.aab` has a fresh timestamp before uploading.
+
+Before each Play Store upload, raise `versionCode` in `android/app/build.gradle.kts` (the Play Console refuses a code it has seen, including internal test uploads).
 
 ## Security
 

@@ -81,7 +81,7 @@ class AboutView extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'Version 6.3',
+                    'Version 6.4',
                     style: TextStyle(color: Colors.cyanAccent, fontSize: 14),
                   ),
                 ),

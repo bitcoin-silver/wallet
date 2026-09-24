@@ -29,8 +29,10 @@ extensions.configure<ApplicationExtension> {
         applicationId = "top.bitcoinsilver.wallet2025"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 86
-        versionName = "BTCS-W-6.3"
+        // Set here, not from pubspec.yaml: Play Store versionCode must keep
+        // increasing. pubspec.yaml's version is what iOS uses.
+        versionCode = 88
+        versionName = "BTCS-W-6.4"
     }
 
     signingConfigs {

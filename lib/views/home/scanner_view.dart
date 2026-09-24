@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+/// Scans a QR code and pops with its full text.
 class ScannerView extends StatefulWidget {
   const ScannerView({super.key});
+
+  /// Fallback for scans PaymentRequest cannot read: the old behaviour of
+  /// keeping only the address part of a URI.
+  static String addressPart(String value) => _ScannerViewState._addressPart(value);
 
   @override
   State<ScannerView> createState() => _ScannerViewState();
@@ -65,18 +70,15 @@ class _ScannerViewState extends State<ScannerView> with WidgetsBindingObserver {
       // Haptic feedback for better UX
       HapticFeedback.mediumImpact();
 
-      // Parse Bitcoin URI format (e.g., bitcoinsilver:ADDRESS?label=xxx)
-      String scannedValue = barcodes.first.rawValue!;
-      String cleanAddress = _parseAddressFromUri(scannedValue);
-
-      // Return the parsed address
-      Navigator.pop(context, cleanAddress);
+      // Return the full scanned text (address, bitcoinsilver: payment request
+      // or web payment link). Callers read it with PaymentRequest.fromText so
+      // the amount and note of a request are not lost.
+      Navigator.pop(context, barcodes.first.rawValue!.trim());
     }
   }
 
-  /// Parse Bitcoin URI to extract just the address
   /// Handles formats like: bitcoinsilver:BS1Q...?label=miner-3
-  String _parseAddressFromUri(String value) {
+  static String _addressPart(String value) {
     String address = value.trim();
 
     // Remove bitcoinsilver: prefix if present (case-insensitive)
