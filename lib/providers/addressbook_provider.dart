@@ -225,7 +225,20 @@ class AddressbookProvider with ChangeNotifier {
           .replaceFirst(RegExp(r'^\uFEFF'), '')
           .trim();
 
-      final decoded = jsonDecode(sanitized);
+      Object? decoded;
+      var ignoredTrailingData = false;
+      try {
+        decoded = jsonDecode(sanitized);
+      } on FormatException catch (e) {
+        // Exports made before the FileExportService fix can end with leftover
+        // bytes from an older, longer file that was saved over (FilePicker
+        // did not truncate; see MainActivity.kt). Recover the complete export
+        // at the start of the file when its contact count proves it is whole.
+        if (e.message.toLowerCase().contains('unexpected end of input')) rethrow;
+        decoded = _completeExportFollowedByLeftovers(sanitized);
+        if (decoded == null) rethrow;
+        ignoredTrailingData = true;
+      }
 
       if (decoded is! Map) {
         return {
@@ -265,7 +278,7 @@ class AddressbookProvider with ChangeNotifier {
         return {
           'success': false,
           'message':
-              'Selected file appears incomplete ($rawEntries.length of $declaredCount contacts). '
+              'Selected file appears incomplete (${rawEntries.length} of $declaredCount contacts). '
               'Please reselect the original .btcs file (not a temporary .bin cache copy).',
         };
       }
@@ -325,7 +338,8 @@ class AddressbookProvider with ChangeNotifier {
         'success': true,
         'imported': imported,
         'skipped': skipped,
-        'message': 'Imported $imported contacts. Skipped $skipped invalid contacts.',
+        'message': 'Imported $imported contacts. Skipped $skipped invalid contacts.'
+            '${ignoredTrailingData ? ' Leftover data from an older export at the end of the file was ignored.' : ''}',
       };
     } catch (e) {
       if (e is FormatException) {
@@ -353,6 +367,50 @@ class AddressbookProvider with ChangeNotifier {
 
   Future<Map<String, dynamic>> importFromJsonString(String jsonString) {
     return importFromBtcsJson(jsonString);
+  }
+
+  /// Decodes the JSON object at the start of [text] when leftovers follow it.
+  /// Only accepted when the object's `contactCount` equals the number of
+  /// contacts it holds, so a cut-off file is never taken for a whole one.
+  /// Same rule as the web wallet (web-wallet/lib/services/address_book.dart).
+  static Map? _completeExportFollowedByLeftovers(String text) {
+    if (!text.startsWith('{')) return null;
+    var depth = 0;
+    var inString = false;
+    var escaped = false;
+    for (var i = 0; i < text.length; i++) {
+      final c = text[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (c == r'\') {
+          escaped = true;
+        } else if (c == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (c == '"') {
+        inString = true;
+      } else if (c == '{' || c == '[') {
+        depth++;
+      } else if (c == '}' || c == ']') {
+        depth--;
+        if (depth == 0) {
+          try {
+            final head = jsonDecode(text.substring(0, i + 1));
+            if (head is! Map) return null;
+            final count = head['contactCount'];
+            final contacts = head['contacts'];
+            if (count is num && contacts is List && contacts.length == count.toInt()) return head;
+          } on FormatException {
+            return null;
+          }
+          return null;
+        }
+      }
+    }
+    return null;
   }
 
 }

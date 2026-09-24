@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'package:bitcoinsilver_wallet/providers/addressbook_provider.dart';
+import 'package:bitcoinsilver_wallet/services/file_export_service.dart';
 import 'package:bitcoinsilver_wallet/views/home/scanner_view.dart';
 import 'package:bitcoinsilver_wallet/widgets/app_background.dart';
 
@@ -146,7 +147,9 @@ class _AddressbookViewState extends State<AddressbookView> {
       final jsonString = provider.exportToBtcsJson();
       final bytes = Uint8List.fromList(utf8.encode(jsonString));
 
-      dynamic outputResult = await FilePicker.saveFile(
+      // Not FilePicker.saveFile: on Android it can leave the tail of an older
+      // file behind when overwriting it. See FileExportService.
+      final outputResult = await FileExportService.saveFile(
         dialogTitle: 'Export Address Book',
         fileName: 'BTCS_contacts.btcs',
         bytes: bytes,
@@ -154,6 +157,10 @@ class _AddressbookViewState extends State<AddressbookView> {
 
       if (mounted && outputResult != null) {
         _showSnack('Address book exported.');
+      }
+    } on PlatformException catch (e) {
+      if (mounted) {
+        _showSnack('Export failed: ${e.message ?? e.code}', isError: true);
       }
     } catch (e) {
       if (mounted) {

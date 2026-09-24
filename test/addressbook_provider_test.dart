@@ -105,5 +105,69 @@ void main() {
       expect(result['success'], false);
       expect((result['message'] as String).toLowerCase(), contains('incomplete'));
     });
+
+    test('reports the real count when a file has fewer contacts than declared', () async {
+      final provider = AddressbookProvider();
+      await provider.reloadEntries();
+
+      final result = await provider.importFromBtcsJson(
+        '{"version":"1.0","contactCount":3,"contacts":'
+        '[{"username":"A","address":"bs1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"}]}',
+      );
+
+      expect(result['success'], false);
+      expect(result['message'], contains('(1 of 3 contacts)'));
+    });
+  });
+
+  // Older exports: FilePicker.saveFile did not truncate when saving over a
+  // longer file, so the old file's tail follows the new JSON (real case:
+  // 5 contacts followed by 124 leftover bytes). See MainActivity.kt.
+  group('AddressbookProvider import of exports with leftover bytes', () {
+    const export = '{"version":"1.0","exportDate":"2026-09-24T17:17:06.099880","contactCount":2,'
+        '"contacts":[{"username":"miner 4","address":"bs1q8dnz4q52czdusl8hy04fw3jryj2kc3earck3y2",'
+        '"isFavorite":true,"addedAt":"2026-09-06T11:06:59.984662"},'
+        '{"username":"Raul.A","address":"bs1qxxmaq9929mddelzh2x73ydwcq6xvd0z4yxh55p",'
+        '"isFavorite":true,"addedAt":"2026-06-17T23:07:18.750032"}]}';
+    const leftover = '"username":"Raul.A","address":"bs1qxxmaq9929mddelzh2x73ydwcq6xvd0z4yxh55p",'
+        '"isFavorite":true,"addedAt":"2026-06-17T23:07:18.750032"}]}';
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+    });
+
+    test('imports the complete export and ignores the leftovers', () async {
+      final provider = AddressbookProvider();
+      await provider.reloadEntries();
+
+      final result = await provider.importFromBtcsJson(export + leftover);
+
+      expect(result['success'], true);
+      expect(result['imported'], 2);
+      expect(result['message'], contains('Leftover data'));
+      expect(provider.entries.map((e) => e.label), ['miner 4', 'Raul.A']);
+    });
+
+    test('refuses leftovers when the contact count does not match', () async {
+      final provider = AddressbookProvider();
+      await provider.reloadEntries();
+
+      final wrongCount = export.replaceFirst('"contactCount":2', '"contactCount":7');
+      final result = await provider.importFromBtcsJson(wrongCount + leftover);
+
+      expect(result['success'], false);
+      expect(provider.entries, isEmpty);
+    });
+
+    test('refuses leftovers when there is no contact count', () async {
+      final provider = AddressbookProvider();
+      await provider.reloadEntries();
+
+      final noCount = export.replaceFirst('"contactCount":2,', '');
+      final result = await provider.importFromBtcsJson(noCount + leftover);
+
+      expect(result['success'], false);
+      expect(provider.entries, isEmpty);
+    });
   });
 }
