@@ -14,6 +14,9 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Pinned to the version the app is built and tested with locally
+          # (Android builds, pubspec.lock). Raise it together with local Flutter.
+          flutter-version: '3.47.5'
           channel: 'stable'
 
       - name: Install dependencies

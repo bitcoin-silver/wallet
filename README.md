@@ -155,6 +155,56 @@ With `--extra-gen-snapshot-options=--strip`, Flutter (3.47) ends the bundle buil
 
 Before each Play Store upload, raise `versionCode` in `android/app/build.gradle.kts` (the Play Console refuses a code it has seen, including internal test uploads).
 
+## iOS Release (GitHub Actions)
+
+The workflow `.github/workflows/ios_release.yml` ("iOS Release Build") builds a signed iOS app on a GitHub macOS runner and uploads it to **TestFlight**. It never runs on a push: it only starts when you start it. Commits that should not be picked up by any future automatic workflow can still carry `[skip ci]` in the message.
+
+### Before starting it
+
+1. Commit and push everything that should be in the build; the workflow builds the `main` branch as it is on GitHub.
+2. Raise the version in `pubspec.yaml` (`version: 6.4.1+5`). iOS uses it directly: `6.4.1` is the version users see, and the number after `+` is the build number, which must be higher than any build already uploaded to App Store Connect, including TestFlight uploads.
+3. Check that the signing files have not expired: the Apple Distribution certificate (yearly) and the provisioning profile (yearly). Renewing either means updating its repository secret (below).
+
+### Starting it
+
+On GitHub: open the repository → **Actions** → **iOS Release Build** → **Run workflow** → branch `main` → **Run workflow**.
+
+Or from a terminal with the [GitHub CLI](https://cli.github.com/):
+
+```bash
+gh workflow run ios_release.yml -R bitcoin-silver/wallet --ref main
+gh run watch -R bitcoin-silver/wallet        # follow it (choose the new run)
+gh run list -R bitcoin-silver/wallet --workflow ios_release.yml -L 5
+```
+
+A run takes roughly 8 to 10 minutes. When it succeeds, the build appears in App Store Connect → TestFlight after Apple's processing (usually 10 to 30 minutes). The `.ipa` is also kept as the run's `ios-ipa` artifact, even when the TestFlight upload fails.
+
+### What it uses
+
+- Flutter **3.47.5**, pinned in the workflow to the version used for local and Android builds. When you upgrade Flutter locally, raise `flutter-version` in the workflow too.
+- Bundle ID `top.bitcoinsilver.bitcoinsilverWallet`, manual signing with the "Apple Distribution" certificate.
+- Repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Used for |
+|---|---|
+| `IOS_DIST_CERT_P12_BASE64`, `IOS_DIST_CERT_PASSWORD` | Apple Distribution certificate (.p12, base64) and its password |
+| `IOS_PROVISION_PROFILE_BASE64` | App Store provisioning profile (.mobileprovision, base64) |
+| `KEYCHAIN_PASSWORD` | Any password for the temporary keychain on the runner |
+| `APPSTORE_TEAM_ID` | Apple developer team ID |
+| `APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID`, `APPSTORE_API_PRIVATE_KEY` | App Store Connect API key used to upload to TestFlight |
+| `RPC_URL`, `NOTIFICATION_API_KEY`, `LIVECOINWATCH_API_KEY`, `NONKYC_API_KEY` | Written into `dart_defines.json`, like the local `dart_defines.json` |
+| `RPC_USER`, `RPC_PASSWORD` | Optional; not needed for the default public RPC proxy |
+
+To store a file as a base64 secret: `base64 -i file.p12 | pbcopy` on macOS, or `base64 -w0 file.p12` on Linux, then paste the output as the secret's value.
+
+### If it fails
+
+Open the run on GitHub and look at the first red step:
+
+- **Import signing certificate…**: a certificate or profile secret is wrong or expired.
+- **Build signed IPA**: a code or dependency problem; try `flutter build ios --release` locally on a Mac with the same Flutter version.
+- **Upload to TestFlight**: usually a build number that was already used (raise the number after `+` in `pubspec.yaml`) or an App Store Connect API key issue.
+
 ## Security
 
 - Private keys stored in encrypted secure storage (Keychain/KeyStore)

@@ -4,7 +4,13 @@ All notable changes to the Bitcoin Silver Android wallet are documented in this 
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+### Documentation
+
+- README: new "iOS Release (GitHub Actions)" section on starting the manual iOS workflow, the version and build number it needs, the repository secrets it uses, and what to check when it fails.
+
+### Changed
+
+- iOS release workflow: Flutter pinned to 3.47.5 (was: whatever stable release was newest on the day of the run), matching local and Android builds.
 
 ## [6.4.1] - Play Store versionCode 89, iOS build 6.4.1+5
 
