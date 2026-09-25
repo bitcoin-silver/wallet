@@ -4,6 +4,10 @@ All notable changes to the Bitcoin Silver Android wallet are documented in this 
 
 ## [Unreleased]
 
+### Security
+
+- The NonKYC API key is no longer built into the app. The exchange screen only reads public market data (`/market/info`), which needs no key; the old key was revoked on the NonKYC account. `NONKYC_API_KEY` is gone from `dart_defines.json` and the iOS workflow.
+
 ### Documentation
 
 - README: new "iOS Release (GitHub Actions)" section on starting the manual iOS workflow, the version and build number it needs, the repository secrets it uses, and what to check when it fails.

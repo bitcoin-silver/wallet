@@ -192,7 +192,7 @@ A run takes roughly 8 to 10 minutes. When it succeeds, the build appears in App 
 | `KEYCHAIN_PASSWORD` | Any password for the temporary keychain on the runner |
 | `APPSTORE_TEAM_ID` | Apple developer team ID |
 | `APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID`, `APPSTORE_API_PRIVATE_KEY` | App Store Connect API key used to upload to TestFlight |
-| `RPC_URL`, `NOTIFICATION_API_KEY`, `LIVECOINWATCH_API_KEY`, `NONKYC_API_KEY` | Written into `dart_defines.json`, like the local `dart_defines.json` |
+| `RPC_URL`, `NOTIFICATION_API_KEY`, `LIVECOINWATCH_API_KEY` | Written into `dart_defines.json`, like the local `dart_defines.json` |
 | `RPC_USER`, `RPC_PASSWORD` | Optional; not needed for the default public RPC proxy |
 
 To store a file as a base64 secret: `base64 -i file.p12 | pbcopy` on macOS, or `base64 -w0 file.p12` on Linux, then paste the output as the secret's value.

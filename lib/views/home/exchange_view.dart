@@ -227,7 +227,6 @@ class _ExchangeViewState extends State<ExchangeView> with TickerProviderStateMix
         Uri.parse('${Config.nonkycApiUrl}/market/info?symbol=BTCS%2FUSDC'),
         headers: {
           'Accept': 'application/json',
-          'X-API-Key': Config.nonkycApiKey,
         },
       ).timeout(
         const Duration(seconds: 10),
